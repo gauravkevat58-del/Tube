@@ -33,7 +33,7 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Configure release signing from GitHub Secrets
+      - name: Validate GitHub release signing secrets
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -58,11 +58,71 @@ jobs:
             exit 1
           fi
 
+          python3 - <<'PY'
+          import base64
+          import binascii
+          import os
+          import re
+          import sys
+
+          raw = os.environ.get("KEYSTORE_BASE64", "")
+          if not raw:
+              print("::error::ANDROID_KEYSTORE_BASE64 is empty.")
+              sys.exit(1)
+
+          if "\x00" in raw or raw.startswith("\ufeff"):
+              print("::error::ANDROID_KEYSTORE_BASE64 appears to be UTF-16 or contains null bytes/BOM. Re-encode as plain ASCII/UTF-8 Base64 and update the secret.")
+              sys.exit(1)
+
+          if "-----BEGIN" in raw or "-----END" in raw:
+              print("::error::ANDROID_KEYSTORE_BASE64 contains PEM header/footer lines (e.g. -----BEGIN CERTIFICATE-----). Remove those lines and recreate the secret with raw Base64 only.")
+              sys.exit(1)
+
+          stripped_ws = re.sub(r"[\r\n\t ]+", "", raw)
+          if not stripped_ws:
+              print("::error::ANDROID_KEYSTORE_BASE64 contains only whitespace.")
+              sys.exit(1)
+
+          if stripped_ws.startswith(('"', "'")) or stripped_ws.endswith(('"', "'")):
+              print("::error::ANDROID_KEYSTORE_BASE64 appears wrapped in quotes. Remove surrounding quotes and recreate the secret.")
+              sys.exit(1)
+
+          if "-" in stripped_ws or "_" in stripped_ws:
+              print("::error::ANDROID_KEYSTORE_BASE64 contains URL-safe Base64 characters ('-' or '_'). Re-encode using standard Base64 ('+' and '/') and update the secret.")
+              sys.exit(1)
+
+          b64_pattern = re.compile(r"^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$")
+          if not b64_pattern.fullmatch(stripped_ws):
+              mod4 = len(stripped_ws) % 4
+              has_invalid_chars = bool(re.search(r"[^A-Za-z0-9+/=]", stripped_ws))
+              if has_invalid_chars:
+                  print(f"::error::ANDROID_KEYSTORE_BASE64 contains invalid non-Base64 characters (normalized length={len(stripped_ws)}). Recreate the secret from your original keystore file.")
+              else:
+                  print(f"::error::ANDROID_KEYSTORE_BASE64 has invalid length or '=' padding (normalized length={len(stripped_ws)}, length mod 4={mod4}). It may be truncated; recreate the secret cleanly.")
+              sys.exit(1)
+
+          try:
+              decoded = base64.b64decode(stripped_ws, validate=True)
+          except (binascii.Error, ValueError):
+              print(f"::error::ANDROID_KEYSTORE_BASE64 failed strict Base64 validation (normalized length={len(stripped_ws)}). Recreate the secret cleanly.")
+              sys.exit(1)
+
+          if not decoded:
+              print("::error::ANDROID_KEYSTORE_BASE64 decoded to 0 bytes.")
+              sys.exit(1)
+
+          print(f"ANDROID_KEYSTORE_BASE64 passed strict Base64 validation (normalized length={len(stripped_ws)}, decoded bytes={len(decoded)}).")
+          PY
+
+      - name: Configure release signing from GitHub Secrets
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
           KEYSTORE_PATH="${{ runner.temp }}/release.keystore"
-          printf '%s' "$KEYSTORE_BASE64" \
-            | sed '/-----BEGIN.*-----/d;/-----END.*-----/d' \
-            | tr -d '\r\n\t ' \
-            | base64 -d > "$KEYSTORE_PATH"
+          printenv KEYSTORE_BASE64 | tr -d '\r\n\t ' | base64 -d > "$KEYSTORE_PATH"
 
           if [ ! -s "$KEYSTORE_PATH" ]; then
             echo "::error::Decoded keystore is empty. Verify ANDROID_KEYSTORE_BASE64 is valid Base64."
