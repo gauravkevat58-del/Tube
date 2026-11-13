@@ -42,7 +42,7 @@ jobs:
         run: |
           MISSING=0
           for VAR_NAME in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
-            eval VAL=\$$VAR_NAME
+            VAL="${!VAR_NAME}"
             if [ -z "$VAL" ]; then
               MISSING=1
             fi
@@ -59,20 +59,25 @@ jobs:
           fi
 
           KEYSTORE_PATH="${{ runner.temp }}/release.keystore"
-          printf '%s' "$KEYSTORE_BASE64" | tr -d '\r\n ' | base64 -d > "$KEYSTORE_PATH"
+          printf '%s' "$KEYSTORE_BASE64" \
+            | sed '/-----BEGIN.*-----/d;/-----END.*-----/d' \
+            | tr -d '\r\n\t ' \
+            | base64 -d > "$KEYSTORE_PATH"
 
           if [ ! -s "$KEYSTORE_PATH" ]; then
             echo "::error::Decoded keystore is empty. Verify ANDROID_KEYSTORE_BASE64 is valid Base64."
             exit 1
           fi
 
-          if ! keytool -list -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null 2>&1; then
+          if ! keytool -list -keystore "$KEYSTORE_PATH" -storepass:env KEYSTORE_PASSWORD -alias "$KEY_ALIAS" >/dev/null 2>&1; then
             echo "::error::Failed to verify keystore with ANDROID_KEYSTORE_PASSWORD and ANDROID_KEY_ALIAS."
             exit 1
           fi
 
+          ESCAPED_STORE_PASS="${KEYSTORE_PASSWORD//\\/\\\\}"
+          ESCAPED_KEY_PASS="${KEY_PASSWORD//\\/\\\\}"
           printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
-            "$KEYSTORE_PATH" "$KEYSTORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" > keystore.properties
+            "$KEYSTORE_PATH" "$ESCAPED_STORE_PASS" "$KEY_ALIAS" "$ESCAPED_KEY_PASS" > keystore.properties
 
           echo "Release signing configured and verified."
 
