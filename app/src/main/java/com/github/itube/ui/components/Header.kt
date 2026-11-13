@@ -32,6 +32,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
@@ -132,5 +133,10 @@ fun vignetteBrush(color: Color, opaqueAtTop: Boolean): Brush {
     )
 }
 
-/** Bottom padding as given, plus the collapsing header's height on top. */
-fun PaddingValues.withTop(top: Dp) = PaddingValues(top = top, bottom = calculateBottomPadding())
+/** Bottom padding as given, preserving horizontal padding plus the collapsing header's height on top. */
+fun PaddingValues.withTop(top: Dp) = PaddingValues(
+    start = calculateLeftPadding(LayoutDirection.Ltr),
+    top = top,
+    end = calculateRightPadding(LayoutDirection.Ltr),
+    bottom = calculateBottomPadding(),
+)

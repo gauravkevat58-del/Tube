@@ -77,6 +77,7 @@ import com.github.itube.MusicPlayerState
 import com.github.itube.highQualityThumbnail
 import com.github.itube.pressable
 import com.github.itube.ui.components.AnimatedEqualizer
+import com.github.itube.ui.tv.tvContentEntry
 import com.github.itube.ui.tv.tvFocusRing
 
 /**
@@ -128,7 +129,7 @@ fun LikedMusicScreen(
                     .padding(horizontal = 8.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onBack, modifier = Modifier.tvFocusRing(CircleShape)) {
+                IconButton(onClick = onBack, modifier = Modifier.tvContentEntry("overlay:likedMusic").tvFocusRing(CircleShape)) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
                         contentDescription = "Back",

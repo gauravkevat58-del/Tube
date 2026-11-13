@@ -61,6 +61,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.foundation.focusGroup
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
+import com.github.itube.ui.tv.LocalIsTv
+import com.github.itube.ui.tv.LocalTvFocusBridge
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -98,12 +107,24 @@ val SunnyShape = LobedShape(lobes = 8, depth = 0.05f)
 // ── Header ─────────────────────────────────────────────────────────────────────
 
 /** Seamless header: same surface as the page, heavy title, round 44 dp actions. */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun ScreenHeader(
     title: String,
     brandMark: Boolean = false,
+    route: String? = null,
     actions: @Composable () -> Unit = {},
 ) {
+    val isTv = LocalIsTv.current
+    val bridge = LocalTvFocusBridge.current
+    val headerRequester = remember { FocusRequester() }
+    val activeHeaderRoute = route ?: bridge?.activeRoute
+    if (isTv && bridge != null && activeHeaderRoute != null) {
+        DisposableEffect(bridge, activeHeaderRoute, headerRequester) {
+            bridge.registerHeader(activeHeaderRoute, headerRequester)
+            onDispose { bridge.unregisterHeader(activeHeaderRoute, headerRequester) }
+        }
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -151,7 +172,23 @@ fun ScreenHeader(
             letterSpacing = (-1.3).sp,
             maxLines = 1,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { actions() }
+        Row(
+            modifier = Modifier
+                .focusRequester(headerRequester)
+                .focusProperties {
+                    exit = { direction ->
+                        if (isTv && bridge?.isActiveCenteredEmptyState == true &&
+                            (direction == FocusDirection.Left || direction == FocusDirection.Down)
+                        ) {
+                            bridge.currentEntryRequester() ?: FocusRequester.Default
+                        } else {
+                            FocusRequester.Default
+                        }
+                    }
+                }
+                .focusGroup(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) { actions() }
     }
 }
 
@@ -168,9 +205,14 @@ fun BrandMark() {
 
 @Composable
 fun CircleAction(icon: ImageVector, contentDescription: String, onClick: () -> Unit) {
+    CircleAction(icon, contentDescription, Modifier, onClick)
+}
+
+@Composable
+fun CircleAction(icon: ImageVector, contentDescription: String, modifier: Modifier, onClick: () -> Unit) {
     val c = MaterialTheme.colorScheme
     Box(
-        modifier = Modifier
+        modifier = modifier
             .size(48.dp)
             .pressable(focusShape = CircleShape, onClick = onClick)
             .clip(CircleShape)
@@ -420,6 +462,7 @@ fun ResumeBar(videoId: String, modifier: Modifier = Modifier) {
 
 // ── Empty / error states ───────────────────────────────────────────────────────
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun EmptyState(
     icon: ImageVector,
@@ -429,8 +472,12 @@ fun EmptyState(
     action: (@Composable () -> Unit)? = null,
 ) {
     val c = MaterialTheme.colorScheme
+    val isTv = LocalIsTv.current
+    val bridge = LocalTvFocusBridge.current
     Column(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 36.dp, vertical = 48.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 36.dp, vertical = if (isTv) 24.dp else 48.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
@@ -439,23 +486,45 @@ fun EmptyState(
         ) {
             Icon(icon, contentDescription = null, tint = c.onPrimaryContainer, modifier = Modifier.size(32.dp))
         }
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(if (isTv) 14.dp else 18.dp))
         Text(title, fontFamily = RoundedHeavy, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, textAlign = TextAlign.Center)
         Spacer(Modifier.height(8.dp))
         Text(body, color = c.onSurfaceVariant, fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
         if (action != null) {
-            Spacer(Modifier.height(20.dp))
-            action()
+            Spacer(Modifier.height(if (isTv) 16.dp else 20.dp))
+            Box(
+                modifier = Modifier
+                    .focusProperties {
+                        exit = { direction ->
+                            when {
+                                !isTv || bridge == null -> FocusRequester.Default
+                                direction == FocusDirection.Left -> bridge.railRequester
+                                direction == FocusDirection.Right || direction == FocusDirection.Up ->
+                                    bridge.currentHeaderRequester() ?: FocusRequester.Default
+                                else -> FocusRequester.Default
+                            }
+                        }
+                    }
+                    .focusGroup(),
+                contentAlignment = Alignment.Center,
+            ) {
+                action()
+            }
         }
     }
 }
 
 @Composable
-fun PillButton(text: String, onClick: () -> Unit, icon: ImageVector? = null) {
+fun PillButton(
+    text: String,
+    onClick: () -> Unit,
+    icon: ImageVector? = null,
+    modifier: Modifier = Modifier,
+) {
     val c = MaterialTheme.colorScheme
     Row(
-        modifier = Modifier
-            .pressable(focusShape = CircleShape, onClick = onClick)
+        modifier = modifier
+            .pressable(focusShape = CircleShape, focusScale = 1.06f, focusBorderColor = c.onSurface, onClick = onClick)
             .height(48.dp)
             .clip(CircleShape)
             .background(c.primary)

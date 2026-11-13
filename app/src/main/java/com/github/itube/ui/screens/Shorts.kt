@@ -35,6 +35,8 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
 import androidx.compose.ui.platform.LocalFocusManager
 import com.github.itube.ui.tv.LocalIsTv
+import com.github.itube.ui.tv.LocalTvFocusBridge
+import com.github.itube.ui.tv.tvContentEntry
 import com.github.itube.ui.tv.tvFocusRing
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
@@ -2359,6 +2361,7 @@ private fun ShortsPager(
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
     val isTv = LocalIsTv.current
+    val bridge = LocalTvFocusBridge.current
     val pagerFocus = remember { FocusRequester() }
     LaunchedEffect(isTv) {
         if (isTv) runCatching { pagerFocus.requestFocus() }
@@ -2376,6 +2379,7 @@ private fun ShortsPager(
         state = pager,
         modifier = Modifier
             .fillMaxSize()
+            .tvContentEntry("tab:Shorts")
             .focusRequester(pagerFocus)
             .focusable()
             .onPreviewKeyEvent { ev ->
@@ -2419,7 +2423,8 @@ private fun ShortsPager(
                         true
                     }
                     Key.DirectionLeft -> {
-                        focusManager.moveFocus(FocusDirection.Left)
+                        if (isTv && bridge != null) bridge.focusRail()
+                        else focusManager.moveFocus(FocusDirection.Left)
                     }
                     Key.Menu -> {
                         onMore()

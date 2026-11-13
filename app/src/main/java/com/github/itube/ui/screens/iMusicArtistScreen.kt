@@ -86,6 +86,7 @@ import com.github.itube.pressable
 import com.github.itube.ui.components.AnimatedEqualizer
 import com.github.itube.ui.components.MaterialLoader
 import com.github.itube.ui.components.flowArtistShape
+import com.github.itube.ui.tv.tvContentEntry
 import com.github.itube.ui.tv.tvFocusRing
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -654,6 +655,7 @@ fun iMusicArtistScreen(
                 IconButton(
                     onClick = onBackClick,
                     modifier = Modifier
+                        .tvContentEntry("overlay:musicArtist")
                         .size(40.dp)
                         .tvFocusRing(CircleShape)
                         .background(

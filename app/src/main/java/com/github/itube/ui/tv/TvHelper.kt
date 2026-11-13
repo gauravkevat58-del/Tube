@@ -10,14 +10,19 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -35,6 +40,82 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 val LocalIsTv = compositionLocalOf { false }
+val LocalTvFocusBridge = compositionLocalOf<TvFocusBridge?> { null }
+
+@Stable
+class TvFocusBridge {
+    val railRequester = FocusRequester()
+    var activeRoute by mutableStateOf("tab:Home")
+    private val routeEntries = mutableStateMapOf<String, FocusRequester>()
+    private val routeHeaders = mutableStateMapOf<String, FocusRequester>()
+    private val routeCenteredEmpty = mutableStateMapOf<String, Boolean>()
+
+    fun registerEntry(route: String, requester: FocusRequester, centeredEmptyState: Boolean) {
+        routeEntries[route] = requester
+        routeCenteredEmpty[route] = centeredEmptyState
+    }
+
+    fun unregisterEntry(route: String, requester: FocusRequester) {
+        if (routeEntries[route] === requester) {
+            routeEntries.remove(route)
+            routeCenteredEmpty.remove(route)
+        }
+    }
+
+    fun registerHeader(route: String, requester: FocusRequester) {
+        routeHeaders[route] = requester
+    }
+
+    fun unregisterHeader(route: String, requester: FocusRequester) {
+        if (routeHeaders[route] === requester) routeHeaders.remove(route)
+    }
+
+    val isActiveCenteredEmptyState: Boolean
+        get() = routeCenteredEmpty[activeRoute] == true
+
+    fun currentEntryRequester(): FocusRequester? = routeEntries[activeRoute]
+
+    fun currentHeaderRequester(): FocusRequester? = routeHeaders[activeRoute]
+
+    fun focusRail(): Boolean = runCatching {
+        railRequester.requestFocus()
+        true
+    }.getOrDefault(false)
+
+    fun focusContent(): Boolean {
+        val req = routeEntries[activeRoute] ?: return false
+        return runCatching {
+            req.requestFocus()
+            true
+        }.getOrDefault(false)
+    }
+
+    fun focusHeader(): Boolean {
+        val req = routeHeaders[activeRoute] ?: return false
+        return runCatching {
+            req.requestFocus()
+            true
+        }.getOrDefault(false)
+    }
+}
+
+@Composable
+fun Modifier.tvContentEntry(
+    route: String,
+    centeredEmptyState: Boolean = false,
+): Modifier {
+    val bridge = LocalTvFocusBridge.current ?: return this
+    val isTv = LocalIsTv.current
+    if (!isTv) return this
+    val requester = remember(route) { FocusRequester() }
+    DisposableEffect(bridge, route, requester, centeredEmptyState) {
+        bridge.registerEntry(route, requester, centeredEmptyState)
+        onDispose {
+            bridge.unregisterEntry(route, requester)
+        }
+    }
+    return this.focusRequester(requester)
+}
 
 object TvHelper {
     /** True if running on an Android TV device (Leanback / TV ui mode). */

@@ -76,6 +76,7 @@ import com.github.itube.RoundedHeavy
 import com.github.itube.CachedMusicTrack
 import com.github.itube.MusicCacheManager
 import com.github.itube.pressable
+import com.github.itube.ui.tv.tvContentEntry
 import com.github.itube.ui.tv.tvFocusRing
 import com.github.itube.withTop
 
@@ -134,7 +135,7 @@ fun CachedMusicScreen(
                     .padding(horizontal = 8.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onBack, modifier = Modifier.tvFocusRing(CircleShape)) {
+                IconButton(onClick = onBack, modifier = Modifier.tvContentEntry("overlay:cachedMusic").tvFocusRing(CircleShape)) {
                     Icon(
                         Icons.AutoMirrored.Rounded.ArrowBack,
                         contentDescription = "Back",

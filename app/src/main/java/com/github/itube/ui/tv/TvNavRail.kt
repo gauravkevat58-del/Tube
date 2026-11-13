@@ -40,14 +40,20 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -62,6 +68,7 @@ import com.github.itube.Tab
 val TvRailWidth = 76.dp
 val TvRailExpandedWidth = 204.dp
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun TvNavRail(
     selectedTab: Tab,
@@ -70,7 +77,12 @@ fun TvNavRail(
     modifier: Modifier = Modifier,
 ) {
     val c = MaterialTheme.colorScheme
+    val bridge = LocalTvFocusBridge.current
     var railHasFocus by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        bridge?.focusRail()
+    }
 
     val railWidth by animateDpAsState(
         targetValue = if (railHasFocus) TvRailExpandedWidth else TvRailWidth,
@@ -84,6 +96,15 @@ fun TvNavRail(
             .width(railWidth)
             .shadow(if (railHasFocus) 24.dp else 8.dp)
             .onFocusChanged { railHasFocus = it.hasFocus }
+            .focusProperties {
+                exit = { direction ->
+                    if (direction == FocusDirection.Right) {
+                        bridge?.currentEntryRequester() ?: FocusRequester.Default
+                    } else {
+                        FocusRequester.Default
+                    }
+                }
+            }
             .focusGroup(),
         color = c.surfaceContainerLow.copy(alpha = 0.96f),
         shape = RoundedCornerShape(topEnd = 24.dp, bottomEnd = 24.dp),
@@ -151,10 +172,12 @@ fun TvNavRail(
                 )
 
                 tabs.forEach { tab ->
+                    val selected = tab == selectedTab
                     TvNavRailItem(
                         tab = tab,
-                        isSelected = tab == selectedTab,
+                        isSelected = selected,
                         expanded = railHasFocus,
+                        modifier = if (selected && bridge != null) Modifier.focusRequester(bridge.railRequester) else Modifier,
                         onClick = { onSelectTab(tab) },
                     )
                 }
@@ -221,6 +244,7 @@ private fun TvNavRailItem(
     tab: Tab,
     isSelected: Boolean,
     expanded: Boolean,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     val c = MaterialTheme.colorScheme
@@ -247,7 +271,7 @@ private fun TvNavRailItem(
     }
 
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .height(50.dp)
             .graphicsLayer {

@@ -70,6 +70,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.itube.ui.tv.LocalIsTv
+import com.github.itube.ui.tv.tvContentEntry
 import com.github.itube.ui.tv.tvFocusRing
 import com.github.itube.ui.tv.tvGridColumns
 import kotlinx.coroutines.CoroutineScope
@@ -188,7 +189,7 @@ fun ChannelScreen(
             Modifier.fillMaxWidth().statusBarsPadding().padding(start = 12.dp, end = 16.dp, top = 12.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            CircleAction(Icons.AutoMirrored.Rounded.ArrowBack, "Back", onBack)
+            CircleAction(Icons.AutoMirrored.Rounded.ArrowBack, "Back", Modifier.tvContentEntry("overlay:channel"), onBack)
             Spacer(Modifier.width(12.dp))
             Text(
                 state.details?.name.orEmpty(),
@@ -574,7 +575,7 @@ fun PublicCollectionScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                    CircleAction(Icons.AutoMirrored.Rounded.ArrowBack, "Back", onBack)
+                    CircleAction(Icons.AutoMirrored.Rounded.ArrowBack, "Back", Modifier.tvContentEntry("overlay:collection"), onBack)
                     Spacer(Modifier.width(12.dp))
                     Text(
                         state.collection.title,

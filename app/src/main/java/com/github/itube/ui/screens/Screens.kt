@@ -132,6 +132,8 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import com.github.itube.ui.tv.LocalIsTv
+import com.github.itube.ui.tv.LocalTvFocusBridge
+import com.github.itube.ui.tv.tvContentEntry
 import com.github.itube.ui.tv.tvFocusRing
 import com.github.itube.ui.tv.tvGridColumns
 import androidx.compose.ui.text.TextStyle
@@ -174,7 +176,7 @@ fun HomeScreen(
     CollapsingHeaderLayout(
         resetKey = scrollToTop to lib.home.generation,
         header = {
-            ScreenHeader(title = "iTube", brandMark = true) {
+            ScreenHeader(title = "iTube", brandMark = true, route = "tab:Home") {
                 if (isTv && signedIn) CircleAction(Icons.Rounded.Refresh, "Refresh") { lib.home.refresh() }
                 UpdateAction()
                 AccountAction(onAccount)
@@ -199,6 +201,7 @@ fun HomeScreen(
                 },
                 scrollToTop = scrollToTop,
                 indicatorTop = top,
+                entryRoute = "tab:Home",
             )
         } else {
             LazyColumn(contentPadding = contentPadding.withTop(top)) {
@@ -209,7 +212,11 @@ fun HomeScreen(
                         body = "Sign in with Google to see your own YouTube home feed, or just search.",
                         action = {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                PillButton("Sign in with Google", onSignIn)
+                                PillButton(
+                                    "Sign in with Google",
+                                    onSignIn,
+                                    modifier = Modifier.tvContentEntry("tab:Home", centeredEmptyState = true),
+                                )
                                 Spacer(Modifier.height(12.dp))
                                 TextLink("Search instead", onSearch)
                             }
@@ -398,17 +405,25 @@ fun SubscriptionsScreen(
     CollapsingHeaderLayout(
         resetKey = scrollToTop to lib.subscriptions.generation,
         header = {
-            ScreenHeader(title = "Subscriptions") {
+            ScreenHeader(title = "Subscriptions", route = "tab:Subscriptions") {
                 if (isTv && signedIn) CircleAction(Icons.Rounded.Refresh, "Refresh") { lib.subscriptions.refresh(); lib.loadChannels() }
                 AccountAction(onAccount)
             }
         },
     ) { top ->
         if (signedIn) {
-            FeedList(lib.subscriptions, contentPadding.withTop(top), onOpen, header = {
-                // Always present (empty until loaded) so its arrival never shifts the list.
-                item(key = "channels") { if (lib.channels.isNotEmpty()) ChannelRail(lib.channels) }
-            }, scrollToTop = scrollToTop, indicatorTop = top)
+            FeedList(
+                lib.subscriptions,
+                contentPadding.withTop(top),
+                onOpen,
+                header = {
+                    // Always present (empty until loaded) so its arrival never shifts the list.
+                    item(key = "channels") { if (lib.channels.isNotEmpty()) ChannelRail(lib.channels, entryRoute = "tab:Subscriptions") }
+                },
+                scrollToTop = scrollToTop,
+                indicatorTop = top,
+                entryRoute = if (lib.channels.isEmpty()) "tab:Subscriptions" else null,
+            )
         } else {
             LazyColumn(contentPadding = contentPadding.withTop(top)) {
                 item {
@@ -416,7 +431,13 @@ fun SubscriptionsScreen(
                         icon = Icons.Rounded.Subscriptions,
                         title = "Your subscriptions",
                         body = "Sign in with Google to see new videos from the channels you follow.",
-                        action = { PillButton("Sign in with Google", onSignIn) },
+                        action = {
+                            PillButton(
+                                "Sign in with Google",
+                                onSignIn,
+                                modifier = Modifier.tvContentEntry("tab:Subscriptions", centeredEmptyState = true),
+                            )
+                        },
                     )
                 }
             }
@@ -425,9 +446,10 @@ fun SubscriptionsScreen(
 }
 
 @Composable
-private fun ChannelRail(channels: List<ChannelRef>) {
+private fun ChannelRail(channels: List<ChannelRef>, entryRoute: String? = null) {
     val c = MaterialTheme.colorScheme
     val openChannel = LocalChannelOpener.current
+    val firstId = channels.firstOrNull()?.id
     LazyRow(
         contentPadding = PaddingValues(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -436,6 +458,7 @@ private fun ChannelRail(channels: List<ChannelRef>) {
         items(channels, key = { it.id }) { ch ->
             Column(
                 Modifier
+                    .then(if (entryRoute != null && ch.id == firstId) Modifier.tvContentEntry(entryRoute) else Modifier)
                     .width(64.dp)
                     .pressable(pressedScale = 0.94f, focusScale = 1.04f, focusShape = RoundedCornerShape(12.dp)) { openChannel(ch.id) }
                     .clip(RoundedCornerShape(12.dp)),
@@ -477,7 +500,7 @@ fun LibraryScreen(
     CollapsingHeaderLayout(
         resetKey = scrollToTop to lib.history.generation,
         header = {
-            ScreenHeader(title = "Library") {
+            ScreenHeader(title = "Library", route = "tab:Library") {
                 if (isTv && signedIn) CircleAction(Icons.Rounded.Refresh, "Refresh") { lib.history.refresh(); lib.loadPlaylists() }
                 AccountAction(onAccount)
             }
@@ -496,7 +519,13 @@ fun LibraryScreen(
                         icon = Icons.Rounded.VideoLibrary,
                         title = "Your library",
                         body = "Sign in with Google for your history, Watch later, liked videos and playlists.",
-                        action = { PillButton("Sign in with Google", onSignIn) },
+                        action = {
+                            PillButton(
+                                "Sign in with Google",
+                                onSignIn,
+                                modifier = Modifier.tvContentEntry("tab:Library", centeredEmptyState = true),
+                            )
+                        },
                     )
                 }
             }
@@ -519,7 +548,7 @@ fun LibraryScreen(
                             color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp,
-                            modifier = Modifier.pressable(focusShape = CircleShape, onClick = onOpenHistory).padding(horizontal = 8.dp, vertical = 4.dp),
+                            modifier = Modifier.tvContentEntry("tab:Library").pressable(focusShape = CircleShape, onClick = onOpenHistory).padding(horizontal = 8.dp, vertical = 4.dp),
                         )
                     }
                 }
@@ -825,7 +854,7 @@ fun DownloadsScreen(
                 Modifier.fillMaxWidth().statusBarsPadding().padding(start = 12.dp, end = 16.dp, top = 12.dp, bottom = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                CircleAction(Icons.AutoMirrored.Rounded.ArrowBack, "Back", onBack)
+                CircleAction(Icons.AutoMirrored.Rounded.ArrowBack, "Back", Modifier.tvContentEntry("overlay:downloads"), onBack)
                 Spacer(Modifier.width(12.dp))
                 Text("Downloads", fontFamily = RoundedHeavy, fontWeight = FontWeight.ExtraBold, fontSize = 24.sp)
             }
@@ -934,7 +963,7 @@ fun HistoryScreen(
                     Modifier.fillMaxWidth().statusBarsPadding().padding(start = 12.dp, end = 16.dp, top = 12.dp, bottom = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    CircleAction(Icons.AutoMirrored.Rounded.ArrowBack, "Back", onBack)
+                    CircleAction(Icons.AutoMirrored.Rounded.ArrowBack, "Back", Modifier.tvContentEntry("overlay:history"), onBack)
                     Spacer(Modifier.width(12.dp))
                     Text(
                         "History",
@@ -1013,7 +1042,7 @@ fun PlaylistScreen(
             Modifier.fillMaxWidth().statusBarsPadding().padding(start = 12.dp, end = 16.dp, top = 12.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            CircleAction(Icons.AutoMirrored.Rounded.ArrowBack, "Back", onBack)
+            CircleAction(Icons.AutoMirrored.Rounded.ArrowBack, "Back", Modifier.tvContentEntry("overlay:playlist"), onBack)
             Spacer(Modifier.width(12.dp))
             Text(
                 playlist.title,
@@ -1473,7 +1502,7 @@ private fun TextLink(text: String, onClick: () -> Unit) {
         color = MaterialTheme.colorScheme.primary,
         fontWeight = FontWeight.ExtraBold,
         fontSize = 14.sp,
-        modifier = Modifier.pressable(focusShape = CircleShape, onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp),
+        modifier = Modifier.pressable(focusShape = CircleShape, focusScale = 1.06f, onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp),
     )
 }
 
@@ -1700,6 +1729,8 @@ fun SearchScreen(
     val showHistory = history.isNotEmpty() && (focused || currentSubmitted.isEmpty())
     val showSuggestions = focused && state.query.trim().length >= 2 && state.suggestions.isNotEmpty()
 
+    val bridge = LocalTvFocusBridge.current
+    val isTv = LocalIsTv.current
     // The search bar rides with the header: both slide away together while scrolling results.
     CollapsingHeaderLayout(
         resetKey = listOf(scrollToTop, state.generation, state.musicGeneration, state.category, showHistory),
@@ -1707,6 +1738,7 @@ fun SearchScreen(
         // This remains a Search page; filters are separate from application settings.
         ScreenHeader(
             title = "Search",
+            route = "tab:Search",
         ) {
             if (state.category == SearchCategory.Videos) {
                 CircleAction(Icons.Rounded.Tune, "Search filters") { filtersOpen = true }
@@ -1743,13 +1775,15 @@ fun SearchScreen(
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = { submit() }, onDone = { submit() }),
                     // Hardware Enter doesn't go through the IME action; treat it the same.
-                    modifier = Modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused }.onPreviewKeyEvent { e ->
+                    modifier = Modifier.tvContentEntry("tab:Search").fillMaxWidth().onFocusChanged { focused = it.isFocused }.onPreviewKeyEvent { e ->
                         if (e.key == Key.Enter || e.key == Key.NumPadEnter) {
                             if (e.type == KeyEventType.KeyDown) submit()
                             true
                         } else if (e.key == Key.DirectionDown && e.type == KeyEventType.KeyDown) {
                             focus.moveFocus(FocusDirection.Down)
                             true
+                        } else if (isTv && e.key == Key.DirectionLeft && state.query.isEmpty() && e.type == KeyEventType.KeyDown) {
+                            bridge?.focusRail() == true
                         } else false
                     },
                 )

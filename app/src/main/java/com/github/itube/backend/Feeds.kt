@@ -33,6 +33,7 @@ import com.github.itube.ui.components.HomeScreenSkeleton
 import com.github.itube.ui.components.MaterialLoader
 import com.github.itube.ui.components.ModernPullToRefreshBox
 import com.github.itube.ui.tv.LocalIsTv
+import com.github.itube.ui.tv.tvContentEntry
 import com.github.itube.ui.tv.tvGridColumns
 import kotlinx.coroutines.launch
 
@@ -286,11 +287,13 @@ fun FeedList(
     pullToRefresh: Boolean = true,
     /** Collapsing header height: the refresh spinner appears just below it. */
     indicatorTop: Dp = 0.dp,
+    entryRoute: String? = null,
     footer: (LazyListScope.() -> Unit)? = null,
 ) {
     val c = MaterialTheme.colorScheme
     val list = rememberScrollToTop(scrollToTop)
     val displayVideos = videosOverride ?: feed.videos
+    val firstVideoId = displayVideos.firstOrNull()?.id
     // Fresh content always starts at the top (first load and every refresh).
     LaunchedEffect(feed.generation) { list.scrollToItem(0) }
     val nearEnd by remember {
@@ -322,7 +325,11 @@ fun FeedList(
                         ) {
                             for (video in row) {
                                 Box(Modifier.weight(1f)) {
-                                    VideoCard(video, onClick = { onOpen(video) })
+                                    VideoCard(
+                                        video,
+                                        onClick = { onOpen(video) },
+                                        modifier = if (entryRoute != null && video.id == firstVideoId) Modifier.tvContentEntry(entryRoute) else Modifier,
+                                    )
                                 }
                             }
                             repeat(gridCols - row.size) {
@@ -331,7 +338,13 @@ fun FeedList(
                         }
                     }
                 } else {
-                    items(group, key = { it.id }) { video -> VideoCard(video, onClick = { onOpen(video) }) }
+                    items(group, key = { it.id }) { video ->
+                        VideoCard(
+                            video,
+                            onClick = { onOpen(video) },
+                            modifier = if (entryRoute != null && video.id == firstVideoId) Modifier.tvContentEntry(entryRoute) else Modifier,
+                        )
+                    }
                 }
                 offset = end
                 // Keep cadence stable as more pages arrive: don't insert a shelf after an
@@ -348,7 +361,11 @@ fun FeedList(
                     ) {
                         for (video in row) {
                             Box(Modifier.weight(1f)) {
-                                VideoCard(video, onClick = { onOpen(video) })
+                                VideoCard(
+                                    video,
+                                    onClick = { onOpen(video) },
+                                    modifier = if (entryRoute != null && video.id == firstVideoId) Modifier.tvContentEntry(entryRoute) else Modifier,
+                                )
                             }
                         }
                         repeat(gridCols - row.size) {
@@ -357,11 +374,23 @@ fun FeedList(
                     }
                 }
             } else {
-                items(displayVideos, key = { it.id }) { video -> VideoCard(video, onClick = { onOpen(video) }) }
+                items(displayVideos, key = { it.id }) { video ->
+                    VideoCard(
+                        video,
+                        onClick = { onOpen(video) },
+                        modifier = if (entryRoute != null && video.id == firstVideoId) Modifier.tvContentEntry(entryRoute) else Modifier,
+                    )
+                }
             }
         } else {
             displayVideos.firstOrNull()?.let { first ->
-                item(key = first.id) { VideoCard(first, onClick = { onOpen(first) }) }
+                item(key = first.id) {
+                    VideoCard(
+                        first,
+                        onClick = { onOpen(first) },
+                        modifier = if (entryRoute != null) Modifier.tvContentEntry(entryRoute) else Modifier,
+                    )
+                }
             }
             afterFirstVideo()
             if (gridCols > 1) {
@@ -394,7 +423,13 @@ fun FeedList(
                     icon = Icons.Rounded.CloudOff,
                     title = "Couldn't load this",
                     body = feed.error.orEmpty(),
-                    action = { PillButton("Try again", { feed.refresh() }) },
+                    action = {
+                        PillButton(
+                            "Try again",
+                            { feed.refresh() },
+                            modifier = if (entryRoute != null) Modifier.tvContentEntry(entryRoute, centeredEmptyState = true) else Modifier,
+                        )
+                    },
                 )
             }
             feed.loading && feed.videos.isEmpty() -> item {

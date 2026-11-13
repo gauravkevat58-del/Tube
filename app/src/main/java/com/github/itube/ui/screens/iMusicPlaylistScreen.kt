@@ -78,6 +78,7 @@ import com.github.itube.MusicPlaylistRef
 import com.github.itube.pressable
 import com.github.itube.ui.components.AnimatedEqualizer
 import com.github.itube.ui.components.MaterialLoader
+import com.github.itube.ui.tv.tvContentEntry
 import com.github.itube.ui.tv.tvFocusRing
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -152,7 +153,7 @@ fun iMusicPlaylistScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBackClick, modifier = Modifier.tvFocusRing(CircleShape)) {
+                    IconButton(onClick = onBackClick, modifier = Modifier.tvContentEntry("overlay:musicPlaylist").tvFocusRing(CircleShape)) {
                         Icon(
                             Icons.AutoMirrored.Rounded.ArrowBack,
                             contentDescription = "Back",

@@ -427,7 +427,7 @@ fun AirStreamApp() {
     // Lists scroll fully clear of the floating nav (and mini-player when present).
     val contentPadding = if (isTv) {
         PaddingValues(
-            start = com.github.itube.ui.tv.TvRailWidth + 14.dp,
+            start = 12.dp,
             end = 16.dp,
             top = 10.dp,
             bottom = stackBottom + (if (hasMini) MiniHeight + MiniGap else if (hasMusicMini) 74.dp else 0.dp) + 20.dp,
@@ -603,8 +603,24 @@ fun AirStreamApp() {
         val sharedSurface = remember(player) {
             androidx.compose.runtime.movableContentOf { m: Modifier -> VideoSurface(player.controller, m) }
         }
+        val tvFocusBridge = remember { com.github.itube.ui.tv.TvFocusBridge() }
+        val activeTvRoute = when {
+            likedMusicOpen -> "overlay:likedMusic"
+            cachedMusicOpen -> "overlay:cachedMusic"
+            openMoodsAndGenres -> "overlay:moods"
+            openMusicPlaylist != null -> "overlay:musicPlaylist"
+            openMusicArtist != null -> "overlay:musicArtist"
+            openPublicCollection != null -> "overlay:collection"
+            openChannel != null -> "overlay:channel"
+            historyOpen -> "overlay:history"
+            downloadsOpen -> "overlay:downloads"
+            openPlaylist != null -> "overlay:playlist"
+            else -> "tab:${tab.name}"
+        }
+        SideEffect { tvFocusBridge.activeRoute = activeTvRoute }
         CompositionLocalProvider(
             com.github.itube.ui.tv.LocalIsTv provides isTv,
+            com.github.itube.ui.tv.LocalTvFocusBridge provides (if (isTv) tvFocusBridge else null),
             // In picture-in-picture only the PiP view below shows the video.
             LocalVideoSurface provides if (pip.active) NoVideoSurface else sharedSurface,
             LocalPictureInPicture provides pip,
@@ -626,6 +642,9 @@ fun AirStreamApp() {
         ) {
         AnimatedContent(
             targetState = tab,
+            modifier = Modifier.padding(
+                start = if (isTv && tab != Tab.Shorts && !playerOpen && !showFullscreen) com.github.itube.ui.tv.TvRailWidth else 0.dp,
+            ),
             transitionSpec = {
                 if (reduced) fadeIn(snap()) togetherWith fadeOut(snap())
                 else (fadeIn(tween(Motion.PageEnterMs, easing = Motion.Emphasized)) +
@@ -756,6 +775,7 @@ fun AirStreamApp() {
             val pl = openPlaylist
             val feed = playlistFeed
             if (pl != null && feed != null) {
+                Box(Modifier.fillMaxSize().padding(start = if (isTv && !playerOpen && !showFullscreen) com.github.itube.ui.tv.TvRailWidth else 0.dp)) {
                 PlaylistScreen(
                     playlist = pl,
                     feed = feed,
@@ -774,6 +794,7 @@ fun AirStreamApp() {
                         optionsPlaylistFor = pl.takeIf { selected -> feed.videos.any { it.id == video.id } }
                     },
                 )
+                }
             }
         }
 
@@ -782,6 +803,7 @@ fun AirStreamApp() {
             enter = if (reduced) fadeIn(snap()) else slideInHorizontally(tween(340, easing = Motion.Emphasized)) { it } + fadeIn(tween(120)),
             exit = if (reduced) fadeOut(snap()) else slideOutHorizontally(tween(300, easing = Motion.Emphasized)) { it } + fadeOut(tween(220)),
         ) {
+            Box(Modifier.fillMaxSize().padding(start = if (isTv && !playerOpen && !showFullscreen) com.github.itube.ui.tv.TvRailWidth else 0.dp)) {
             DownloadsScreen(
                 contentPadding = contentPadding,
                 onBack = { downloadsOpen = false },
@@ -790,6 +812,7 @@ fun AirStreamApp() {
                     player.openOffline(download)
                 },
             )
+            }
         }
 
         AnimatedVisibility(
@@ -797,6 +820,7 @@ fun AirStreamApp() {
             enter = if (reduced) fadeIn(snap()) else slideInHorizontally(tween(340, easing = Motion.Emphasized)) { it } + fadeIn(tween(120)),
             exit = if (reduced) fadeOut(snap()) else slideOutHorizontally(tween(300, easing = Motion.Emphasized)) { it } + fadeOut(tween(220)),
         ) {
+            Box(Modifier.fillMaxSize().padding(start = if (isTv && !playerOpen && !showFullscreen) com.github.itube.ui.tv.TvRailWidth else 0.dp)) {
             HistoryScreen(
                 lib = lib,
                 contentPadding = contentPadding,
@@ -809,6 +833,7 @@ fun AirStreamApp() {
                     tab = Tab.Shorts
                 },
             )
+            }
         }
 
         // A channel opens the same way, over everything below the mini-player.
@@ -818,6 +843,7 @@ fun AirStreamApp() {
             exit = if (reduced) fadeOut(snap()) else slideOutHorizontally(tween(300, easing = Motion.Emphasized)) { it } + fadeOut(tween(220)),
         ) {
             channelState?.let { ch ->
+                Box(Modifier.fillMaxSize().padding(start = if (isTv && !playerOpen && !showFullscreen) com.github.itube.ui.tv.TvRailWidth else 0.dp)) {
                 ChannelScreen(
                     ch, contentPadding, onBack = { openChannel = null },
                     // A video from a channel opened in Shorts plays in the app's player: Shorts closes.
@@ -831,6 +857,7 @@ fun AirStreamApp() {
                     onOpenCollection = ::showPublicCollection,
                     onMessage = { player.actionMessage = it },
                 )
+                }
             }
         }
 
@@ -841,6 +868,7 @@ fun AirStreamApp() {
             exit = if (reduced) fadeOut(snap()) else slideOutHorizontally(tween(300, easing = Motion.Emphasized)) { it } + fadeOut(tween(220)),
         ) {
             publicCollectionState?.let { collection ->
+                Box(Modifier.fillMaxSize().padding(start = if (isTv && !playerOpen && !showFullscreen) com.github.itube.ui.tv.TvRailWidth else 0.dp)) {
                 PublicCollectionScreen(
                     state = collection,
                     contentPadding = contentPadding,
@@ -855,6 +883,7 @@ fun AirStreamApp() {
                     },
                     onOpenChannel = ::showChannel,
                 )
+                }
             }
         }
 
@@ -935,6 +964,7 @@ fun AirStreamApp() {
             enter = if (reduced) fadeIn(snap()) else slideInHorizontally(tween(340, easing = Motion.Emphasized)) { it } + fadeIn(tween(120)),
             exit = if (reduced) fadeOut(snap()) else slideOutHorizontally(tween(300, easing = Motion.Emphasized)) { it } + fadeOut(tween(220)),
         ) {
+            Box(Modifier.fillMaxSize().padding(start = if (isTv && !playerOpen && !showFullscreen) com.github.itube.ui.tv.TvRailWidth else 0.dp)) {
             CachedMusicScreen(
                 contentPadding = contentPadding,
                 onBack = { cachedMusicOpen = false },
@@ -942,6 +972,7 @@ fun AirStreamApp() {
                     MusicPlayerState.play(track, queue)
                 }
             )
+            }
         }
 
         AnimatedVisibility(
@@ -949,6 +980,7 @@ fun AirStreamApp() {
             enter = if (reduced) fadeIn(snap()) else slideInHorizontally(tween(340, easing = Motion.Emphasized)) { it } + fadeIn(tween(120)),
             exit = if (reduced) fadeOut(snap()) else slideOutHorizontally(tween(300, easing = Motion.Emphasized)) { it } + fadeOut(tween(220)),
         ) {
+            Box(Modifier.fillMaxSize().padding(start = if (isTv && !playerOpen && !showFullscreen) com.github.itube.ui.tv.TvRailWidth else 0.dp)) {
             LikedMusicScreen(
                 contentPadding = contentPadding,
                 onBack = { likedMusicOpen = false },
@@ -956,6 +988,7 @@ fun AirStreamApp() {
                     MusicPlayerState.play(track, queue)
                 }
             )
+            }
         }
 
         // Ledgii's bottom vignette: the page color fades in over the last 130 dp (plus the

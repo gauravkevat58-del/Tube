@@ -90,6 +90,7 @@ import com.github.itube.ui.components.ModernPullToRefreshBox
 import com.github.itube.ui.components.MusicScreenSkeleton
 import com.github.itube.ui.components.flowArtistShape
 import com.github.itube.ui.tv.LocalIsTv
+import com.github.itube.ui.tv.tvContentEntry
 import com.github.itube.ui.tv.tvFocusRing
 import kotlinx.coroutines.launch
 
@@ -156,7 +157,7 @@ fun MusicScreen(
             .background(c.background)
     ) {
         // ── Top Header with tag "iMusic" ("i" in red) ──
-        ScreenHeader(title = "iMusic", brandMark = true) {
+        ScreenHeader(title = "iMusic", brandMark = true, route = "tab:Music") {
             if (LocalIsTv.current) {
                 CircleAction(Icons.Rounded.Refresh, "Refresh") { loadData(selectedChip) }
             }
@@ -191,7 +192,7 @@ fun MusicScreen(
                                 contentPadding = PaddingValues(horizontal = 16.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                itemsIndexed(currentFeed.chips, key = { idx, chip -> "chip_${chip}_$idx" }) { _, chip ->
+                                itemsIndexed(currentFeed.chips, key = { idx, chip -> "chip_${chip}_$idx" }) { idx, chip ->
                                     val selected = chip == selectedChip
                                     FilterChip(
                                         selected = selected,
@@ -199,7 +200,8 @@ fun MusicScreen(
                                             selectedChip = if (selected) null else chip
                                             loadData(selectedChip)
                                         },
-                                        modifier = Modifier.tvFocusRing(RoundedCornerShape(20.dp), focusScale = 1.04f),
+                                        modifier = (if (idx == 0) Modifier.tvContentEntry("tab:Music") else Modifier)
+                                            .tvFocusRing(RoundedCornerShape(20.dp), focusScale = 1.04f),
                                         label = {
                                             Text(
                                                 text = chip,
@@ -244,6 +246,7 @@ fun MusicScreen(
                                             shape = RoundedCornerShape(12.dp),
                                             color = c.secondaryContainer,
                                             modifier = Modifier
+                                                .then(if (currentFeed.chips.isEmpty()) Modifier.tvContentEntry("tab:Music") else Modifier)
                                                 .width(220.dp)
                                                 .fillMaxHeight()
                                                 .pressable(focusShape = RoundedCornerShape(12.dp), focusScale = 1.02f) {

@@ -52,6 +52,7 @@ import com.github.itube.MoodCategory
 import com.github.itube.MusicBackend
 import com.github.itube.pressable
 import com.github.itube.ui.components.MaterialLoader
+import com.github.itube.ui.tv.tvContentEntry
 import com.github.itube.ui.tv.tvFocusRing
 import com.github.itube.ui.tv.tvGridColumns
 import kotlinx.coroutines.Dispatchers
@@ -98,7 +99,7 @@ fun iMusicMoodsAndGenresScreen(
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBackClick, modifier = Modifier.tvFocusRing(CircleShape)) {
+                    IconButton(onClick = onBackClick, modifier = Modifier.tvContentEntry("overlay:moods").tvFocusRing(CircleShape)) {
                         Icon(
                             Icons.AutoMirrored.Rounded.ArrowBack,
                             contentDescription = "Back",

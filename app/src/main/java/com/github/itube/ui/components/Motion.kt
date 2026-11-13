@@ -14,6 +14,7 @@ import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -79,6 +80,7 @@ fun Modifier.pressable(
     focusScale: Float = 1.04f,
     focusBorderWidth: Dp = 2.5.dp,
     focusShape: Shape? = null,
+    focusBorderColor: Color? = null,
     onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ): Modifier = composed {
@@ -98,7 +100,7 @@ fun Modifier.pressable(
         label = "pressScale",
     )
     val c = MaterialTheme.colorScheme
-    val strokeColor = c.primary
+    val strokeColor = focusBorderColor ?: c.primary
     val shape = focusShape ?: RoundedCornerShape(18.dp)
 
     val layer = this
