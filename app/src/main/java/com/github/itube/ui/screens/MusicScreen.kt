@@ -37,6 +37,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material3.ButtonDefaults
@@ -88,6 +89,8 @@ import com.github.itube.ui.components.AnimatedEqualizer
 import com.github.itube.ui.components.ModernPullToRefreshBox
 import com.github.itube.ui.components.MusicScreenSkeleton
 import com.github.itube.ui.components.flowArtistShape
+import com.github.itube.ui.tv.LocalIsTv
+import com.github.itube.ui.tv.tvFocusRing
 import kotlinx.coroutines.launch
 
 /**
@@ -154,6 +157,9 @@ fun MusicScreen(
     ) {
         // ── Top Header with tag "iMusic" ("i" in red) ──
         ScreenHeader(title = "iMusic", brandMark = true) {
+            if (LocalIsTv.current) {
+                CircleAction(Icons.Rounded.Refresh, "Refresh") { loadData(selectedChip) }
+            }
             UpdateAction()
             CircleAction(Icons.Rounded.Search, "Search", onSearch)
             AccountAction(onAccount)
@@ -193,6 +199,7 @@ fun MusicScreen(
                                             selectedChip = if (selected) null else chip
                                             loadData(selectedChip)
                                         },
+                                        modifier = Modifier.tvFocusRing(RoundedCornerShape(20.dp), focusScale = 1.04f),
                                         label = {
                                             Text(
                                                 text = chip,
@@ -239,7 +246,7 @@ fun MusicScreen(
                                             modifier = Modifier
                                                 .width(220.dp)
                                                 .fillMaxHeight()
-                                                .pressable {
+                                                .pressable(focusShape = RoundedCornerShape(12.dp), focusScale = 1.02f) {
                                                     val shuffled = speedDialTracks.shuffled()
                                                     onOpenMusic(shuffled.first(), shuffled)
                                                 }
@@ -281,6 +288,8 @@ fun MusicScreen(
                                                 .width(230.dp)
                                                 .fillMaxHeight()
                                                 .pressable(
+                                                    focusShape = RoundedCornerShape(12.dp),
+                                                    focusScale = 1.02f,
                                                     onLongClick = { trackOptionsFor = track },
                                                     onClick = { onOpenMusic(track, speedDialTracks) }
                                                 )
@@ -395,6 +404,8 @@ fun MusicScreen(
                                             modifier = Modifier
                                                 .width(96.dp)
                                                 .pressable(
+                                                    focusShape = RoundedCornerShape(16.dp),
+                                                    focusScale = 1.03f,
                                                     onLongClick = { artistOptionsFor = artist },
                                                     onClick = { onArtistClick(artist) }
                                                 ),
@@ -442,82 +453,164 @@ fun MusicScreen(
                                 )
                                 Spacer(Modifier.height(10.dp))
 
-                                val pagerState = rememberPagerState(pageCount = { dailyItems.size })
-                                HorizontalPager(
-                                    state = pagerState,
-                                    contentPadding = PaddingValues(horizontal = 32.dp),
-                                    pageSpacing = 16.dp,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(210.dp)
-                                ) { page ->
-                                    val item = dailyItems[page]
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .clip(RoundedCornerShape(20.dp))
-                                            .background(c.surfaceContainerHigh)
-                                            .pressable(
-                                                onLongClick = { trackOptionsFor = item },
-                                                onClick = { onOpenMusic(item, dailyItems) }
-                                            )
+                                if (LocalIsTv.current) {
+                                    LazyRow(
+                                        contentPadding = PaddingValues(horizontal = 16.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                        modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        AsyncImage(
-                                            model = item.thumbnailUrl,
-                                            contentDescription = item.title,
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                        // Gradient scrim overlay
+                                        itemsIndexed(dailyItems, key = { idx, item -> "dd_tv_${item.id}_$idx" }) { _, item ->
+                                            Box(
+                                                modifier = Modifier
+                                                    .width(320.dp)
+                                                    .height(190.dp)
+                                                    .pressable(
+                                                        focusShape = RoundedCornerShape(20.dp),
+                                                        focusScale = 1.02f,
+                                                        onLongClick = { trackOptionsFor = item },
+                                                        onClick = { onOpenMusic(item, dailyItems) }
+                                                    )
+                                                    .clip(RoundedCornerShape(20.dp))
+                                                    .background(c.surfaceContainerHigh)
+                                            ) {
+                                                AsyncImage(
+                                                    model = item.thumbnailUrl,
+                                                    contentDescription = item.title,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxSize()
+                                                        .background(
+                                                            Brush.verticalGradient(
+                                                                0.4f to Color.Transparent,
+                                                                1f to Color.Black.copy(alpha = 0.85f)
+                                                            )
+                                                        )
+                                                )
+                                                Row(
+                                                    modifier = Modifier
+                                                        .align(Alignment.BottomStart)
+                                                        .fillMaxWidth()
+                                                        .padding(16.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text(
+                                                            item.title,
+                                                            fontWeight = FontWeight.Bold,
+                                                            fontSize = 16.sp,
+                                                            color = Color.White,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                        Text(
+                                                            item.artists,
+                                                            fontSize = 13.sp,
+                                                            color = Color.White.copy(alpha = 0.75f),
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                    }
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(40.dp)
+                                                            .clip(CircleShape)
+                                                            .background(Color.White),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Icon(
+                                                            Icons.Rounded.PlayArrow,
+                                                            contentDescription = "Play",
+                                                            tint = Color.Black,
+                                                            modifier = Modifier.size(24.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    val pagerState = rememberPagerState(pageCount = { dailyItems.size })
+                                    HorizontalPager(
+                                        state = pagerState,
+                                        contentPadding = PaddingValues(horizontal = 32.dp),
+                                        pageSpacing = 16.dp,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(210.dp)
+                                    ) { page ->
+                                        val item = dailyItems[page]
                                         Box(
                                             modifier = Modifier
                                                 .fillMaxSize()
-                                                .background(
-                                                    Brush.verticalGradient(
-                                                        0.4f to Color.Transparent,
-                                                        1f to Color.Black.copy(alpha = 0.85f)
-                                                    )
+                                                .clip(RoundedCornerShape(20.dp))
+                                                .background(c.surfaceContainerHigh)
+                                                .pressable(
+                                                    focusShape = RoundedCornerShape(20.dp),
+                                                    onLongClick = { trackOptionsFor = item },
+                                                    onClick = { onOpenMusic(item, dailyItems) }
                                                 )
-                                        )
-                                        // Title and play icon at bottom
-                                        Row(
-                                            modifier = Modifier
-                                                .align(Alignment.BottomStart)
-                                                .fillMaxWidth()
-                                                .padding(16.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.SpaceBetween
                                         ) {
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(
-                                                    item.title,
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 16.sp,
-                                                    color = Color.White,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                                Text(
-                                                    item.artists,
-                                                    fontSize = 13.sp,
-                                                    color = Color.White.copy(alpha = 0.75f),
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                            }
+                                            AsyncImage(
+                                                model = item.thumbnailUrl,
+                                                contentDescription = item.title,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                            // Gradient scrim overlay
                                             Box(
                                                 modifier = Modifier
-                                                    .size(40.dp)
-                                                    .clip(CircleShape)
-                                                    .background(Color.White),
-                                                contentAlignment = Alignment.Center
+                                                    .fillMaxSize()
+                                                    .background(
+                                                        Brush.verticalGradient(
+                                                            0.4f to Color.Transparent,
+                                                            1f to Color.Black.copy(alpha = 0.85f)
+                                                        )
+                                                    )
+                                            )
+                                            // Title and play icon at bottom
+                                            Row(
+                                                modifier = Modifier
+                                                    .align(Alignment.BottomStart)
+                                                    .fillMaxWidth()
+                                                    .padding(16.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.SpaceBetween
                                             ) {
-                                                Icon(
-                                                    Icons.Rounded.PlayArrow,
-                                                    contentDescription = "Play",
-                                                    tint = Color.Black,
-                                                    modifier = Modifier.size(24.dp)
-                                                )
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        item.title,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 16.sp,
+                                                        color = Color.White,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                    Text(
+                                                        item.artists,
+                                                        fontSize = 13.sp,
+                                                        color = Color.White.copy(alpha = 0.75f),
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                }
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(40.dp)
+                                                        .clip(CircleShape)
+                                                        .background(Color.White),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        Icons.Rounded.PlayArrow,
+                                                        contentDescription = "Play",
+                                                        tint = Color.Black,
+                                                        modifier = Modifier.size(24.dp)
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -556,7 +649,7 @@ fun MusicScreen(
                                         fontSize = 20.sp,
                                         color = c.onBackground
                                     )
-                                    TextButton(onClick = onMoodsClick) {
+                                    TextButton(onClick = onMoodsClick, modifier = Modifier.tvFocusRing(CircleShape)) {
                                         Text("See all", fontWeight = FontWeight.Bold, color = c.primary)
                                     }
                                 }
@@ -636,6 +729,8 @@ fun MusicScreen(
                                             modifier = Modifier
                                                 .width(96.dp)
                                                 .pressable(
+                                                    focusShape = RoundedCornerShape(16.dp),
+                                                    focusScale = 1.03f,
                                                     onLongClick = { artistOptionsFor = artist },
                                                     onClick = { onArtistClick(artist) }
                                                 ),
@@ -764,7 +859,10 @@ fun MusicScreen(
                                             Column(
                                                 modifier = Modifier
                                                     .width(96.dp)
-                                                    .pressable { onArtistClick(artist) },
+                                                    .pressable(
+                                                        focusShape = RoundedCornerShape(16.dp),
+                                                        focusScale = 1.03f
+                                                    ) { onArtistClick(artist) },
                                                 horizontalAlignment = Alignment.CenterHorizontally
                                             ) {
                                                 Box(
@@ -888,7 +986,7 @@ private fun MusicShelfTitle(
                     contentColor = c.onSurface
                 ),
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                modifier = Modifier.height(34.dp)
+                modifier = Modifier.height(34.dp).tvFocusRing(CircleShape)
             ) {
                 Icon(Icons.Rounded.PlayArrow, contentDescription = "Play all", modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(4.dp))
@@ -916,8 +1014,9 @@ private fun CollectionShelf(
                 Column(
                     modifier = Modifier
                         .width(140.dp)
-                        .clip(RoundedCornerShape(14.dp))
                         .pressable(
+                            focusShape = RoundedCornerShape(14.dp),
+                            focusScale = 1.02f,
                             onLongClick = { onPlaylistLongClick?.invoke(pl) },
                             onClick = { onPlaylistClick(pl) }
                         )
@@ -997,8 +1096,12 @@ private fun TrackCard(
     Column(
         modifier = Modifier
             .width(136.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .pressable(onLongClick = onLongClick, onClick = onClick)
+            .pressable(
+                focusShape = RoundedCornerShape(14.dp),
+                focusScale = 1.02f,
+                onLongClick = onLongClick,
+                onClick = onClick
+            )
     ) {
         Box(
             modifier = Modifier
@@ -1056,7 +1159,12 @@ private fun QuickPickRow(
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = c.surfaceContainerHigh.copy(alpha = 0.7f),
-        modifier = Modifier.fillMaxWidth().pressable(onLongClick = onLongClick, onClick = onClick)
+        modifier = Modifier.fillMaxWidth().pressable(
+            focusShape = RoundedCornerShape(14.dp),
+            focusScale = 1.02f,
+            onLongClick = onLongClick,
+            onClick = onClick
+        )
     ) {
         Row(
             modifier = Modifier
@@ -1127,7 +1235,12 @@ private fun RankedTrackRow(
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = c.surfaceContainerHigh.copy(alpha = 0.7f),
-        modifier = Modifier.fillMaxWidth().pressable(onLongClick = onLongClick, onClick = onClick)
+        modifier = Modifier.fillMaxWidth().pressable(
+            focusShape = RoundedCornerShape(14.dp),
+            focusScale = 1.02f,
+            onLongClick = onLongClick,
+            onClick = onClick
+        )
     ) {
         Row(
             modifier = Modifier

@@ -281,10 +281,10 @@ private fun DownloadOptionCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
+            .pressable(pressedScale = 0.98f, focusScale = 1.02f, focusShape = shape, onClick = onClick)
             .clip(shape)
             .background(c.surfaceContainer)
             .border(1.dp, c.outlineVariant.copy(alpha = 0.35f), shape)
-            .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp)

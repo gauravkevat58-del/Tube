@@ -4,7 +4,7 @@ import android.view.HapticFeedbackConstants
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -64,6 +64,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.itube.backend.EqualizerManager
+import com.github.itube.pressable
+import com.github.itube.ui.tv.tvFocusRing
+import com.github.itube.ui.tv.tvSliderKeys
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -88,6 +91,7 @@ fun EqualizerSheet(onDismiss: () -> Unit) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .focusGroup()
                 .padding(horizontal = 20.dp, vertical = 18.dp)
                 .verticalScroll(rememberScrollState())
         ) {
@@ -135,6 +139,7 @@ fun EqualizerSheet(onDismiss: () -> Unit) {
                         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                         EqualizerManager.setEqualizerEnabled(it)
                     },
+                    modifier = Modifier.tvFocusRing(CircleShape, focusScale = 1.08f),
                     thumbContent = {
                         Icon(
                             imageVector = if (EqualizerManager.isEnabled) Icons.Rounded.Check else Icons.Rounded.Close,
@@ -146,7 +151,7 @@ fun EqualizerSheet(onDismiss: () -> Unit) {
 
                 Spacer(Modifier.width(8.dp))
 
-                IconButton(onClick = onDismiss) {
+                IconButton(onClick = onDismiss, modifier = Modifier.tvFocusRing(CircleShape)) {
                     Icon(Icons.Rounded.Close, contentDescription = "Close", tint = c.onSurfaceVariant)
                 }
             }
@@ -183,6 +188,7 @@ fun EqualizerSheet(onDismiss: () -> Unit) {
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                             )
                         },
+                        modifier = Modifier.tvFocusRing(RoundedCornerShape(12.dp), focusScale = 1.04f),
                         colors = FilterChipDefaults.filterChipColors(
                             containerColor = c.surfaceContainerHigh,
                             labelColor = c.onSurface,
@@ -219,7 +225,8 @@ fun EqualizerSheet(onDismiss: () -> Unit) {
                                 view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                                 EqualizerManager.resetBands()
                             },
-                            enabled = EqualizerManager.isEnabled
+                            enabled = EqualizerManager.isEnabled,
+                            modifier = Modifier.tvFocusRing(CircleShape)
                         ) {
                             Icon(Icons.Rounded.RestartAlt, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(4.dp))
@@ -272,7 +279,19 @@ fun EqualizerSheet(onDismiss: () -> Unit) {
                                     disabledInactiveTrackColor = c.surfaceContainerHighest.copy(alpha = 0.4f),
                                     thumbColor = c.primary
                                 ),
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .tvSliderKeys(
+                                        value = sliderValue.coerceIn(minMb.toFloat(), maxMb.toFloat()),
+                                        valueRange = minMb.toFloat()..maxMb.toFloat(),
+                                        step = 100f,
+                                        onValueChange = { newVal ->
+                                            sliderValue = newVal
+                                            EqualizerManager.setBandLevel(index, newVal.roundToInt())
+                                        },
+                                        enabled = EqualizerManager.isEnabled
+                                    )
+                                    .tvFocusRing(RoundedCornerShape(12.dp), focusScale = 1.015f)
                             )
 
                             // Gain dB readout
@@ -375,7 +394,7 @@ fun EqualizerSheet(onDismiss: () -> Unit) {
                 color = c.surfaceContainerHigh,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable {
+                    .pressable(focusShape = RoundedCornerShape(16.dp), focusScale = 1.015f) {
                         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                         val launched = EqualizerManager.openSystemEqualizer(context)
                         if (!launched) {
@@ -459,6 +478,7 @@ private fun EnhancementSliderRow(
                 checked = checked,
                 onCheckedChange = onCheckedChange,
                 enabled = masterEnabled,
+                modifier = Modifier.tvFocusRing(CircleShape, focusScale = 1.08f),
                 thumbContent = {
                     Icon(
                         imageVector = if (checked) Icons.Rounded.Check else Icons.Rounded.Close,
@@ -490,7 +510,19 @@ private fun EnhancementSliderRow(
                     disabledInactiveTrackColor = c.surfaceContainerHighest.copy(alpha = 0.4f),
                     thumbColor = c.primary
                 ),
-                modifier = Modifier.weight(1f)
+                modifier = Modifier
+                    .weight(1f)
+                    .tvSliderKeys(
+                        value = localVal.coerceIn(valueRange.first.toFloat(), valueRange.last.toFloat()),
+                        valueRange = valueRange.first.toFloat()..valueRange.last.toFloat(),
+                        step = 50f,
+                        onValueChange = { newVal ->
+                            localVal = newVal
+                            onValueChange(newVal.roundToInt())
+                        },
+                        enabled = enabled
+                    )
+                    .tvFocusRing(RoundedCornerShape(12.dp), focusScale = 1.015f)
             )
 
             Spacer(Modifier.width(10.dp))

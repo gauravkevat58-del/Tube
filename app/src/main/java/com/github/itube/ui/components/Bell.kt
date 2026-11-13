@@ -251,12 +251,13 @@ fun SubscribeWithBell(
     val keyBg by animateColorAsState(if (bell) c.primary else c.secondaryContainer, tween(220), label = "bellBg")
     val keyInk by animateColorAsState(if (bell) c.onPrimary else c.onSecondaryContainer, tween(220), label = "bellInk")
     Row(modifier.height(height), verticalAlignment = Alignment.CenterVertically) {
+        val subShape = RoundedCornerShape(topStart = outer, bottomStart = outer, topEnd = inner, bottomEnd = inner)
         Row(
             modifier = (if (wide) Modifier.weight(1f) else Modifier)
                 .squishOn(subscribed)
                 .fillMaxHeight()
-                .pressable(onClick = onSubscribe)
-                .clip(RoundedCornerShape(topStart = outer, bottomStart = outer, topEnd = inner, bottomEnd = inner))
+                .pressable(focusShape = subShape, onClick = onSubscribe)
+                .clip(subShape)
                 .background(if (subscribed) c.secondaryContainer else c.onSurface)
                 .padding(horizontal = if (subscribed) 16.dp else 20.dp),
             horizontalArrangement = Arrangement.Center,
@@ -269,6 +270,7 @@ fun SubscribeWithBell(
             )
         }
         if (keyShown > 0f) {
+            val keyShape = RoundedCornerShape(topStart = keyStart, bottomStart = keyStart, topEnd = outer, bottomEnd = outer)
             // Grows out of Subscribed's right edge: the gap and key take their width as it shows.
             Spacer(Modifier.width(3.dp * keyShown))
             Box(
@@ -282,8 +284,8 @@ fun SubscribeWithBell(
                     .fillMaxHeight()
                     .width(keyWidth)
                     .squishOn(bell)
-                    .pressable(enabled = showKey) { channel?.let(toggleBell) }
-                    .clip(RoundedCornerShape(topStart = keyStart, bottomStart = keyStart, topEnd = outer, bottomEnd = outer))
+                    .pressable(enabled = showKey, focusShape = keyShape) { channel?.let(toggleBell) }
+                    .clip(keyShape)
                     .background(keyBg),
                 contentAlignment = Alignment.Center,
             ) {

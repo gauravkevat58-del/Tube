@@ -11,10 +11,17 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
-import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
@@ -62,13 +69,14 @@ fun rememberReducedMotion(): Boolean {
 /**
  * Tap target with the app's press & D-pad remote focus feedback:
  * - A small scale-down while held and a quick spring back on touch.
- * - On TV / D-pad remote: smooth scale-up, shadow pop, and high-visibility focus outline.
+ * - On TV / D-pad remote: smooth scale-up, shadow pop, and high-visibility focus outline drawn
+ *   in the overlay pass so solid backgrounds never cover it.
  */
 @OptIn(ExperimentalFoundationApi::class)
 fun Modifier.pressable(
     enabled: Boolean = true,
     pressedScale: Float = 0.94f,
-    focusScale: Float = 1.05f,
+    focusScale: Float = 1.04f,
     focusBorderWidth: Dp = 2.5.dp,
     focusShape: Shape? = null,
     onLongClick: (() -> Unit)? = null,
@@ -99,13 +107,30 @@ fun Modifier.pressable(
             scaleY = scale
             if (focused) shadowElevation = 16f
         }
-        .then(
+        .drawWithContent {
+            drawContent()
             if (focused) {
-                Modifier.border(focusBorderWidth, strokeColor, shape)
-            } else Modifier
-        )
+                val outline = shape.createOutline(size, layoutDirection, this)
+                drawOutline(
+                    outline = outline,
+                    color = strokeColor,
+                    style = Stroke(width = focusBorderWidth.toPx()),
+                )
+            }
+        }
     if (!enabled) return@composed layer
     layer
+        .then(
+            if (onLongClick != null) {
+                Modifier.onKeyEvent { ev ->
+                    if (ev.type == KeyEventType.KeyDown && ev.key == Key.Menu) {
+                        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                        onLongClick()
+                        true
+                    } else false
+                }
+            } else Modifier
+        )
         .combinedClickable(
             interactionSource = interaction,
             indication = null,

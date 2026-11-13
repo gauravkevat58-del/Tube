@@ -10,6 +10,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
@@ -25,12 +26,19 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -73,6 +81,7 @@ fun WavySlider(
     val normalizedValue = ((value - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
 
     var isDragging by remember { mutableStateOf(false) }
+    var isFocused by remember { mutableStateOf(false) }
     var dragProgress by remember { mutableFloatStateOf(normalizedValue) }
 
     val currentProgress = if (isDragging) dragProgress else normalizedValue
@@ -97,9 +106,9 @@ fun WavySlider(
     )
     val animatedAmpPx = with(density) { animatedAmplitude.toPx() }
 
-    // Thumb scale up slightly when scrubbing
+    // Thumb scale up slightly when scrubbing or D-pad focused
     val animatedThumbRadius by animateDpAsState(
-        targetValue = if (isDragging) thumbRadius + 2.5.dp else thumbRadius,
+        targetValue = if (isDragging || isFocused) thumbRadius + 2.5.dp else thumbRadius,
         animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
         label = "thumbRadiusAnim"
     )
@@ -107,6 +116,7 @@ fun WavySlider(
 
     val currentOnValueChange by rememberUpdatedState(onValueChange)
     val currentOnValueChangeFinished by rememberUpdatedState(onValueChangeFinished)
+    val dpadStep = if (rangeSpan > 15_000f) 10_000f else rangeSpan / 20f
 
     val containerHeight = (thumbRadius * 2 + 16.dp).coerceAtLeast(32.dp)
 
@@ -114,6 +124,26 @@ fun WavySlider(
         modifier = modifier
             .fillMaxWidth()
             .height(containerHeight)
+            .onFocusChanged { isFocused = it.hasFocus }
+            .focusable(enabled = enabled)
+            .onPreviewKeyEvent { ev ->
+                if (!enabled || ev.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                when (ev.key) {
+                    Key.DirectionLeft -> {
+                        val next = (value - dpadStep).coerceIn(valueRange.start, valueRange.endInclusive)
+                        currentOnValueChange(next)
+                        currentOnValueChangeFinished?.invoke()
+                        true
+                    }
+                    Key.DirectionRight -> {
+                        val next = (value + dpadStep).coerceIn(valueRange.start, valueRange.endInclusive)
+                        currentOnValueChange(next)
+                        currentOnValueChangeFinished?.invoke()
+                        true
+                    }
+                    else -> false
+                }
+            }
             .pointerInput(enabled, valueRange) {
                 if (!enabled) return@pointerInput
                 detectTapGestures { offset ->
@@ -157,6 +187,13 @@ fun WavySlider(
             val width = size.width
             val centerY = size.height / 2f
             val thumbX = (width * currentProgress).coerceIn(0f, width)
+            if (isFocused) {
+                drawRoundRect(
+                    color = thumbColor.copy(alpha = 0.65f),
+                    cornerRadius = CornerRadius(12.dp.toPx()),
+                    style = Stroke(width = 2.dp.toPx()),
+                )
+            }
 
             // 1. Inactive Track (straight smooth line from thumbX to end)
             if (thumbX < width) {
@@ -207,7 +244,14 @@ fun WavySlider(
                 )
             }
 
-            // 3. Thumb (sleek solid circle)
+            // 3. Thumb (sleek solid circle + focus halo when D-pad focused)
+            if (isFocused) {
+                drawCircle(
+                    color = thumbColor.copy(alpha = 0.32f),
+                    radius = animatedThumbRadiusPx + 6.dp.toPx(),
+                    center = Offset(thumbX, centerY)
+                )
+            }
             drawCircle(
                 color = thumbColor,
                 radius = animatedThumbRadiusPx,

@@ -63,6 +63,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -73,7 +75,20 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import com.github.itube.pressable
+import com.github.itube.ui.components.WavySlider
+import com.github.itube.ui.tv.tvFocusRing
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -189,11 +204,6 @@ import com.github.itube.R
 import com.github.itube.StreamCache
 import com.github.itube.VideoItem
 import com.github.itube.highQualityThumbnail
-import com.github.itube.ui.components.WavySlider
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.withContext
 
 private fun lerpDp(start: Dp, stop: Dp, fraction: Float): Dp =
     start + (stop - start) * fraction
@@ -497,6 +507,13 @@ fun IosStyledPlayer(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black)
+            .focusGroup()
+            .onPreviewKeyEvent { ev ->
+                if (ev.type == KeyEventType.KeyDown && ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_MENU) {
+                    optionsOpen = true
+                    true
+                } else false
+            }
             .onGloballyPositioned { rootBoxCoords = it }
             .pointerInput(Unit) {
                 awaitEachGesture {
@@ -522,6 +539,7 @@ fun IosStyledPlayer(
             }
     ) {
         val statusBarTopDp = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+        val isTvLandscape = maxWidth > maxHeight && maxWidth >= 600.dp
         val fullBleedHeight = maxHeight * 0.56f
 
         // ── 1. Ambient Blurred Artwork / Video Layer (Full-screen ambient glow across entire display with zero black drop) ──
@@ -598,17 +616,17 @@ fun IosStyledPlayer(
                 label = "fullscreenZoomScale"
             )
             val bottomPaddingDp by animateDpAsState(
-                targetValue = if (zoomMode == 0) (titleBottomPadding + 8.dp).coerceAtLeast(0.dp) else 0.dp,
+                targetValue = if (!isTvLandscape && zoomMode == 0) (titleBottomPadding + 8.dp).coerceAtLeast(0.dp) else 0.dp,
                 animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy),
                 label = "fullscreenBottomPadding"
             )
             val topPaddingDp by animateDpAsState(
-                targetValue = if (zoomMode == 0) 58.dp else 0.dp,
+                targetValue = if (!isTvLandscape && zoomMode == 0) 58.dp else 0.dp,
                 animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy),
                 label = "fullscreenTopPadding"
             )
             val verticalBias by animateFloatAsState(
-                targetValue = if (zoomMode == 0) 1.0f else 0.0f,
+                targetValue = if (!isTvLandscape && zoomMode == 0) 1.0f else 0.0f,
                 animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy),
                 label = "fullscreenVerticalBias"
             )
@@ -647,19 +665,20 @@ fun IosStyledPlayer(
                 )
             }
 
-            // In Zoom to Fill / Deep Zoom (zoomMode >= 1), add a subtle legibility scrim over the full-bleed video
-            if (zoomMode >= 1) {
+            // In Zoom to Fill / Deep Zoom (or Landscape fullscreen), add a subtle legibility scrim over the full-bleed video
+            if (zoomMode >= 1 || isTvLandscape) {
                 Box(
                     modifier = Modifier
+                        .zIndex(16f)
                         .fillMaxSize()
                         .background(
                             Brush.verticalGradient(
                                 colorStops = arrayOf(
-                                    0f to Color.Black.copy(alpha = 0.35f),
+                                    0f to Color.Black.copy(alpha = 0.40f),
                                     0.25f to Color.Transparent,
-                                    0.55f to Color.Black.copy(alpha = 0.40f),
-                                    0.80f to Color.Black.copy(alpha = 0.80f),
-                                    1f to Color.Black.copy(alpha = 0.95f),
+                                    0.55f to Color.Black.copy(alpha = 0.35f),
+                                    0.80f to Color.Black.copy(alpha = 0.78f),
+                                    1f to Color.Black.copy(alpha = 0.92f),
                                 )
                             )
                         )
@@ -667,8 +686,8 @@ fun IosStyledPlayer(
             }
         }
 
-        // ── Square Video Window (When in Video Mode, not fullscreen) ──
-        if (isVideoMode && !isVideoFullscreen && panelProgress < 0.99f) {
+        // ── Square Video Window (Portrait only when not fullscreen) ──
+        if (!isTvLandscape && isVideoMode && !isVideoFullscreen && panelProgress < 0.99f) {
             Box(
                 modifier = Modifier
                     .zIndex(15f)
@@ -728,6 +747,7 @@ fun IosStyledPlayer(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .padding(10.dp)
+                            .tvFocusRing(RoundedCornerShape(8.dp), borderColor = Color.White)
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -763,6 +783,7 @@ fun IosStyledPlayer(
                             .align(Alignment.BottomEnd)
                             .padding(10.dp)
                             .size(38.dp)
+                            .tvFocusRing(CircleShape, borderColor = Color.White)
                     ) {
                         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                             Icon(
@@ -777,8 +798,8 @@ fun IosStyledPlayer(
             }
         }
 
-        // ── In-Player Synced Lyrics Screen ──
-        if (isLyricsOpen && panelProgress > 0.001f) {
+        // ── In-Player Synced Lyrics Screen (Portrait) ──
+        if (!isTvLandscape && isLyricsOpen && panelProgress > 0.001f) {
             Box(
                 modifier = Modifier
                     .zIndex(5f)
@@ -789,11 +810,8 @@ fun IosStyledPlayer(
                     .graphicsLayer {
                         alpha = panelProgress
                     }
-                    .clickable(
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() }
-                    ) {
-                        onLyricsInteraction()
+                    .pointerInput(Unit) {
+                        detectTapGestures { onLyricsInteraction() }
                     }
             ) {
                 AirBeatsLyricsV2Content(
@@ -812,8 +830,8 @@ fun IosStyledPlayer(
             }
         }
 
-        // ── In-Player Queue Screen ──
-        if (isQueueOpen && panelProgress > 0.001f) {
+        // ── In-Player Queue Screen (Portrait) ──
+        if (!isTvLandscape && isQueueOpen && panelProgress > 0.001f) {
             Box(
                 modifier = Modifier
                     .zIndex(5f)
@@ -824,11 +842,8 @@ fun IosStyledPlayer(
                     .graphicsLayer {
                         alpha = panelProgress
                     }
-                    .clickable(
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() }
-                    ) {
-                        onLyricsInteraction()
+                    .pointerInput(Unit) {
+                        detectTapGestures { onLyricsInteraction() }
                     }
             ) {
                 InPlayerQueueContent(
@@ -849,8 +864,8 @@ fun IosStyledPlayer(
             }
         }
 
-        // ── Continuous Morphing Artwork Avatar (Sharp artwork layer over the blurred layer) ──
-        val showArtworkAvatar = (!isVideoMode || isPanelOpen) && (!isVideoFullscreen || isPanelOpen)
+        // ── Continuous Morphing Artwork Avatar (Portrait only) ──
+        val showArtworkAvatar = !isTvLandscape && (!isVideoMode || isPanelOpen) && (!isVideoFullscreen || isPanelOpen)
         if (showArtworkAvatar) {
             val artTop = lerpDp(0.dp, statusBarTopDp + 6.dp, panelProgress)
             val artStart = lerpDp(0.dp, 16.dp, panelProgress)
@@ -868,7 +883,7 @@ fun IosStyledPlayer(
                         if (panelProgress > 0.85f) {
                             Modifier
                                 .border(1.dp, Color.White.copy(alpha = 0.22f * panelProgress), RoundedCornerShape(artRadius))
-                                .clickable {
+                                .pressable(focusShape = RoundedCornerShape(artRadius)) {
                                     view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                                     MusicPlayerState.lyricsOpen = false
                                     MusicPlayerState.queueOpen = false
@@ -876,11 +891,6 @@ fun IosStyledPlayer(
                         } else Modifier
                     )
             ) {
-                // Sharp Artwork Image with smooth gradient alpha fade at the bottom edge in music mode
-                // dissolving seamlessly into the down-side ambient blur layer below.
-                // Only activate the bottom dissolve fade when settled in the main music player (panelProgress < 0.12f).
-                // During the entire flight to/from the corner avatar (panelProgress >= 0.12f), keep the avatar 100% crisp and solid
-                // so it never begins blurring from the corner upon tapping close!
                 val playerFadeWeight = (1f - panelProgress * 8f).coerceIn(0f, 1f)
                 val fadeStart = lerpFloat(1.0f, 0.72f, playerFadeWeight)
                 val fadeEndAlpha = lerpFloat(1.0f, 0.0f, playerFadeWeight)
@@ -922,18 +932,19 @@ fun IosStyledPlayer(
                 .zIndex(25f)
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .padding(horizontal = 12.dp, vertical = 6.dp)
+                .padding(horizontal = if (isTvLandscape) 24.dp else 12.dp, vertical = 6.dp)
         ) {
-            // Normal Collapse Chevron (fades out in lyrics or queue mode)
+            // Normal Collapse Chevron (fades out in portrait lyrics/queue mode; stays visible on TV landscape)
             IconButton(
                 onClick = onCollapse,
                 modifier = Modifier
                     .size(44.dp)
                     .align(Alignment.CenterStart)
+                    .tvFocusRing(CircleShape, borderColor = Color.White)
                     .graphicsLayer {
-                        alpha = (1f - panelProgress * 2.5f).coerceIn(0f, 1f)
+                        alpha = if (isTvLandscape) 1f else (1f - panelProgress * 2.5f).coerceIn(0f, 1f)
                     },
-                enabled = panelProgress < 0.2f
+                enabled = isTvLandscape || panelProgress < 0.2f
             ) {
                 Icon(
                     imageVector = Icons.Rounded.KeyboardArrowDown,
@@ -943,30 +954,32 @@ fun IosStyledPlayer(
                 )
             }
 
-            // Top Song / Video Switch Pill (Always Centered in music mode, disappears in lyrics/queue mode)
+            // Top Song / Video Switch Pill (Always Centered when not in portrait lyrics/queue mode)
             Box(
                 modifier = Modifier
                     .align(Alignment.Center)
                     .graphicsLayer {
-                        alpha = (1f - panelProgress * 2.5f).coerceIn(0f, 1f)
+                        alpha = if (isTvLandscape && isPanelOpen) 0f else (1f - panelProgress * 2.5f).coerceIn(0f, 1f)
                     }
             ) {
-                MusicVideoSwitchPill(
-                    isVideoMode = isVideoMode,
-                    onToggle = { toVideo ->
-                        if (panelProgress < 0.2f) {
-                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                            MusicPlayerState.isVideoMode = toVideo
-                            if (!toVideo) {
-                                MusicPlayerState.isVideoFullscreen = false
-                                MusicPlayerState.videoFullscreenZoomMode = 0
+                if (!isTvLandscape || !isPanelOpen) {
+                    MusicVideoSwitchPill(
+                        isVideoMode = isVideoMode,
+                        onToggle = { toVideo ->
+                            if (panelProgress < 0.2f || isTvLandscape) {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                MusicPlayerState.isVideoMode = toVideo
+                                if (!toVideo) {
+                                    MusicPlayerState.isVideoFullscreen = false
+                                    MusicPlayerState.videoFullscreenZoomMode = 0
+                                }
                             }
                         }
-                    }
-                )
+                    )
+                }
             }
 
-            // Top 3-Dots More Button (Right in its original top position!)
+            // Top 3-Dots More Button
             Row(
                 modifier = Modifier.align(Alignment.CenterEnd),
                 verticalAlignment = Alignment.CenterVertically
@@ -991,7 +1004,9 @@ fun IosStyledPlayer(
                                 }
                             }
                         },
-                        modifier = Modifier.size(40.dp)
+                        modifier = Modifier
+                            .size(40.dp)
+                            .tvFocusRing(CircleShape, borderColor = Color.White)
                     ) {
                         val icon = when (MusicPlayerState.videoFullscreenZoomMode) {
                             0 -> Icons.Rounded.ZoomOutMap
@@ -1016,7 +1031,9 @@ fun IosStyledPlayer(
                         onLyricsInteraction()
                         optionsOpen = true
                     },
-                    modifier = Modifier.size(44.dp)
+                    modifier = Modifier
+                        .size(44.dp)
+                        .tvFocusRing(CircleShape, borderColor = Color.White)
                 ) {
                     Image(
                         painter = painterResource(R.drawable.more_horiz),
@@ -1027,8 +1044,8 @@ fun IosStyledPlayer(
                 }
             }
 
-            // Lyrics / Queue Mode Header Title & Artist (Placed right next to the morphing avatar thumbnail)
-            if (panelProgress > 0.01f) {
+            // Lyrics / Queue Mode Header Title & Artist (Portrait only)
+            if (!isTvLandscape && panelProgress > 0.01f) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1113,31 +1130,526 @@ fun IosStyledPlayer(
                 .padding(top = 58.dp)
         )
 
-        // ── 3. Bottom Controls Anchored Column ──
-        Column(
-            modifier = Modifier
-                .zIndex(25f)
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 18.dp)
-                .graphicsLayer {
-                    translationY = controlsTranslationY
-                    alpha = controlsAlpha
-                },
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // In music mode, show the track title, artist, and action buttons (Like, Dislike, Comment, Share).
-            // Smoothly fade out the metadata row on the graphics layer without causing any layout shifts or animation hitching!
-            Box(
+        // ── 3. Main Controls & 2-Pane TV Landscape Layout ──
+        if (isTvLandscape && !(isVideoMode && isVideoFullscreen)) {
+            Row(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(42.dp)
-                    .graphicsLayer {
-                        alpha = (1f - panelProgress * 2f).coerceIn(0f, 1f)
-                    }
+                    .zIndex(22f)
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .padding(top = 58.dp, bottom = 18.dp, start = 28.dp, end = 28.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
+                // Left Pane: Square Video OR Album Artwork Card (+ mini track title when panel is open)
+                Column(
+                    modifier = Modifier
+                        .weight(if (isPanelOpen) 0.40f else 0.44f)
+                        .fillMaxHeight(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    if (isVideoMode && !isPanelOpen) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f, fill = false)
+                                .widthIn(max = 330.dp)
+                                .aspectRatio(1f)
+                                .clip(RoundedCornerShape(22.dp))
+                                .background(Color.Black)
+                                .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(22.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            AndroidView(
+                                factory = { ctx ->
+                                    TextureView(ctx).apply {
+                                        videoPlayer.setVideoTextureView(this)
+                                    }
+                                },
+                                update = {
+                                    videoPlayer.setVideoTextureView(it)
+                                },
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .aspectFit(videoAspect, cover = true)
+                            )
+
+                            if (isVideoLoading) {
+                                CircularProgressIndicator(
+                                    color = Color.White,
+                                    strokeWidth = 2.5.dp,
+                                    modifier = Modifier.size(36.dp)
+                                )
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color.Black.copy(alpha = 0.65f),
+                                onClick = { showQualitySheet = true },
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(10.dp)
+                                    .tvFocusRing(RoundedCornerShape(8.dp), borderColor = Color.White)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.HighQuality,
+                                        contentDescription = "Quality",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(
+                                        text = selectedQuality?.label ?: if (loadedQualityHeight > 0) "${loadedQualityHeight}p" else "480p",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                }
+                            }
+
+                            Surface(
+                                shape = CircleShape,
+                                color = Color.Black.copy(alpha = 0.65f),
+                                onClick = {
+                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                    MusicPlayerState.videoFullscreenZoomMode = 0
+                                    MusicPlayerState.isVideoFullscreen = true
+                                    zoomFeedbackText = "Original Fit"
+                                },
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(10.dp)
+                                    .size(38.dp)
+                                    .tvFocusRing(CircleShape, borderColor = Color.White)
+                            ) {
+                                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Fullscreen,
+                                        contentDescription = "Fullscreen",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        val artShape = RoundedCornerShape(22.dp)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f, fill = false)
+                                .widthIn(max = if (isPanelOpen) 250.dp else 330.dp)
+                                .aspectRatio(1f)
+                                .shadow(20.dp, artShape, spotColor = Color.Black.copy(alpha = 0.45f))
+                                .then(
+                                    if (isPanelOpen) {
+                                        Modifier.pressable(focusShape = artShape, focusScale = 1.03f) {
+                                            MusicPlayerState.lyricsOpen = false
+                                            MusicPlayerState.queueOpen = false
+                                        }
+                                    } else Modifier
+                                )
+                                .clip(artShape)
+                                .border(1.dp, Color.White.copy(alpha = 0.16f), artShape)
+                        ) {
+                            key(track.id) {
+                                AsyncImage(
+                                    model = ImageRequest.Builder(context)
+                                        .data(track.thumbnailUrl?.highQualityThumbnail() ?: track.thumbnailUrl)
+                                        .crossfade(200)
+                                        .build(),
+                                    contentDescription = track.title,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+                        }
+                        if (isPanelOpen) {
+                            Spacer(Modifier.height(14.dp))
+                            Text(
+                                text = track.title,
+                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.basicMarquee()
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                text = track.artists,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.White.copy(alpha = 0.72f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier
+                                    .pressable(focusShape = RoundedCornerShape(8.dp)) {
+                                        val aId = track.artistId?.takeIf { it.isNotBlank() } ?: track.artists
+                                        onArtistClick?.invoke(MusicArtist(id = aId, name = track.artists))
+                                    }
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.width(28.dp))
+
+                // Right Pane: Controls OR Lyrics / Queue + Compact Controls
+                Column(
+                    modifier = Modifier
+                        .weight(if (isPanelOpen) 0.60f else 0.56f)
+                        .fillMaxHeight()
+                        .then(if (!isPanelOpen) Modifier.verticalScroll(rememberScrollState()) else Modifier),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = if (isPanelOpen) Arrangement.SpaceBetween else Arrangement.Center,
+                ) {
+                    if (isLyricsOpen) {
+                        AirBeatsLyricsV2Content(
+                            lyrics = MusicPlayerState.lyrics,
+                            sliderPositionProvider = { if (isSeeking) seekPosition else null },
+                            onSeek = { seekPos ->
+                                MusicPlayerState.seekTo(seekPos)
+                                if (isVideoMode) videoPlayer.seekTo(seekPos)
+                            },
+                            modifier = Modifier.weight(1f).fillMaxWidth()
+                        )
+                        Spacer(Modifier.height(10.dp))
+                    } else if (isQueueOpen) {
+                        InPlayerQueueContent(
+                            currentTrack = track,
+                            queue = MusicPlayerState.queue,
+                            currentIndex = MusicPlayerState.queueIndex,
+                            isPlaying = isPlaying,
+                            onTrackClick = { clickedTrack -> MusicPlayerState.play(clickedTrack, null) },
+                            onRemoveTrack = { idx -> MusicPlayerState.removeFromQueue(idx) },
+                            onArtistClick = onArtistClick,
+                            modifier = Modifier.weight(1f).fillMaxWidth()
+                        )
+                        Spacer(Modifier.height(10.dp))
+                    } else {
+                        // Title + Artist + Social Action Buttons Row
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                                Text(
+                                    text = track.title,
+                                    style = MaterialTheme.typography.headlineSmall.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = (-0.2).sp
+                                    ),
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.basicMarquee()
+                                )
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    text = track.artists,
+                                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp),
+                                    color = Color.White.copy(alpha = 0.72f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier
+                                        .pressable(focusShape = RoundedCornerShape(8.dp)) {
+                                            val aId = track.artistId?.takeIf { it.isNotBlank() } ?: track.artists
+                                            onArtistClick?.invoke(MusicArtist(id = aId, name = track.artists))
+                                        }
+                                        .padding(vertical = 2.dp)
+                                        .basicMarquee()
+                                )
+                            }
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                ImmersiveCircleActionButton(
+                                    icon = if (isLiked) R.drawable.yt_fill_experimental_thumb_up_vd_theme_24 else R.drawable.yt_outline_experimental_thumb_up_vd_theme_24,
+                                    isActive = isLiked,
+                                    contentDescription = "Like",
+                                    onClick = { MusicPlayerState.toggleLike() }
+                                )
+                                ImmersiveCircleActionButton(
+                                    icon = if (isDisliked) R.drawable.yt_fill_experimental_thumb_down_vd_theme_24 else R.drawable.yt_outline_experimental_thumb_down_vd_theme_24,
+                                    isActive = isDisliked,
+                                    contentDescription = "Dislike",
+                                    onClick = { isDisliked = !isDisliked }
+                                )
+                                ImmersiveCircleActionButton(
+                                    icon = R.drawable.ic_comment,
+                                    isActive = commentsOpen,
+                                    contentDescription = "Comments",
+                                    onClick = { commentsOpen = true }
+                                )
+                                ImmersiveCircleActionButton(
+                                    icon = R.drawable.ic_share,
+                                    isActive = false,
+                                    contentDescription = "Share",
+                                    onClick = {
+                                        val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                                            putExtra(Intent.EXTRA_TEXT, "https://youtu.be/${track.id}")
+                                            type = "text/plain"
+                                        }
+                                        context.startActivity(Intent.createChooser(sendIntent, "Share Music"))
+                                    }
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(18.dp))
+                    }
+
+                    // Wavy Seek Bar
+                    WavySlider(
+                        value = displayPos.toFloat(),
+                        onValueChange = {
+                            isSeeking = true
+                            seekPosition = it.toLong().coerceIn(0L, safeDuration)
+                            if (isVideoMode) videoPlayer.seekTo(seekPosition)
+                        },
+                        onValueChangeFinished = {
+                            MusicPlayerState.seekTo(seekPosition)
+                            if (isVideoMode) videoPlayer.seekTo(seekPosition)
+                            isSeeking = false
+                        },
+                        valueRange = 0f..safeDuration.toFloat(),
+                        isPlaying = isPlaying,
+                        activeTrackColor = Color.White,
+                        inactiveTrackColor = Color.White.copy(alpha = 0.25f),
+                        thumbColor = Color.White,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(Modifier.height(4.dp))
+
+                    // Time & Audio Quality Pill
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = formatTime(displayPos),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Color.White.copy(alpha = 0.75f)
+                        )
+                        Box(
+                            modifier = Modifier
+                                .pressable(focusShape = RoundedCornerShape(14.dp)) { optionsOpen = true }
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Color.White.copy(alpha = 0.12f))
+                                .padding(horizontal = 12.dp, vertical = 5.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Image(
+                                    painter = painterResource(R.drawable.graphic_eq),
+                                    contentDescription = null,
+                                    colorFilter = ColorFilter.tint(Color.White.copy(alpha = 0.85f)),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = buildAnnotatedString {
+                                        withStyle(SpanStyle(color = Color(0xFFFF1744))) { append("i") }
+                                        withStyle(SpanStyle(color = Color.White)) { append("Music • 128k") }
+                                    },
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium)
+                                )
+                            }
+                        }
+                        Text(
+                            text = "-${formatTime(remaining)}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Color.White.copy(alpha = 0.75f)
+                        )
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    // Playback Row (Prev, Play/Pause, Next)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = { MusicPlayerState.skipPrevious() },
+                            modifier = Modifier.size(50.dp).tvFocusRing(CircleShape, borderColor = Color.White)
+                        ) {
+                            Image(
+                                painter = painterResource(R.drawable.skip_previous),
+                                contentDescription = "Previous",
+                                colorFilter = ColorFilter.tint(Color.White),
+                                modifier = Modifier.size(34.dp)
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(if (isPanelOpen) 58.dp else 68.dp)
+                                .pressable(focusShape = CircleShape, focusScale = 1.08f) { MusicPlayerState.togglePlayPause() }
+                                .clip(CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (isLoading && !isPlaying) {
+                                CircularProgressIndicator(color = Color.White, strokeWidth = 3.dp, modifier = Modifier.size(38.dp))
+                            } else {
+                                Image(
+                                    painter = painterResource(if (isPlaying) R.drawable.pause else R.drawable.play),
+                                    contentDescription = if (isPlaying) "Pause" else "Play",
+                                    colorFilter = ColorFilter.tint(Color.White),
+                                    modifier = Modifier.size(if (isPanelOpen) 38.dp else 44.dp)
+                                )
+                            }
+                        }
+                        IconButton(
+                            onClick = { MusicPlayerState.skipNext() },
+                            modifier = Modifier.size(50.dp).tvFocusRing(CircleShape, borderColor = Color.White)
+                        ) {
+                            Image(
+                                painter = painterResource(R.drawable.skip_next),
+                                contentDescription = "Next",
+                                colorFilter = ColorFilter.tint(Color.White),
+                                modifier = Modifier.size(34.dp)
+                            )
+                        }
+                    }
+
+                    if (!isPanelOpen) {
+                        Spacer(Modifier.height(12.dp))
+                        IosVolumeSlider(modifier = Modifier.padding(horizontal = 4.dp))
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    // Bottom Action Row (Queue, Lyrics, YouTube Pill)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(46.dp)
+                                    .pressable(focusShape = CircleShape, focusScale = 1.08f) {
+                                        if (MusicPlayerState.isVideoMode) {
+                                            MusicPlayerState.isVideoMode = false
+                                            MusicPlayerState.isVideoFullscreen = false
+                                            MusicPlayerState.videoFullscreenZoomMode = 0
+                                            videoPlayer.pause()
+                                        }
+                                        MusicPlayerState.lyricsOpen = false
+                                        MusicPlayerState.queueOpen = !MusicPlayerState.queueOpen
+                                    }
+                                    .clip(CircleShape)
+                                    .background(if (isQueueOpen) Color.White.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.12f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Image(
+                                    painter = painterResource(R.drawable.queue_music),
+                                    contentDescription = "Queue",
+                                    colorFilter = ColorFilter.tint(if (isQueueOpen) Color.White else Color.White.copy(alpha = 0.90f)),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .size(46.dp)
+                                    .pressable(focusShape = CircleShape, focusScale = 1.08f) {
+                                        if (MusicPlayerState.isVideoMode) {
+                                            MusicPlayerState.isVideoMode = false
+                                            MusicPlayerState.isVideoFullscreen = false
+                                            MusicPlayerState.videoFullscreenZoomMode = 0
+                                            videoPlayer.pause()
+                                        }
+                                        MusicPlayerState.queueOpen = false
+                                        MusicPlayerState.lyricsOpen = !MusicPlayerState.lyricsOpen
+                                    }
+                                    .clip(CircleShape)
+                                    .background(if (isLyricsOpen) Color.White.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.12f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Image(
+                                    painter = painterResource(R.drawable.lyrics),
+                                    contentDescription = "Lyrics",
+                                    colorFilter = ColorFilter.tint(if (isLyricsOpen) Color.White else Color.White.copy(alpha = 0.90f)),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .height(44.dp)
+                                .pressable(focusShape = RoundedCornerShape(22.dp)) {
+                                    val videoId = track.id
+                                    try {
+                                        val ytIntent = Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube:$videoId")).apply {
+                                            setPackage("com.google.android.youtube")
+                                        }
+                                        context.startActivity(ytIntent)
+                                    } catch (_: Exception) {
+                                        val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=$videoId"))
+                                        context.startActivity(webIntent)
+                                    }
+                                }
+                                .clip(RoundedCornerShape(22.dp))
+                                .background(Color.White.copy(alpha = 0.14f))
+                                .padding(horizontal = 16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Image(
+                                    painter = painterResource(R.drawable.youtube),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Text(
+                                    text = "YouTube",
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                    color = Color.White
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            // ── Portrait Stack & Video-Fullscreen Compact Bottom Bar ──
+            Column(
+                modifier = Modifier
+                    .zIndex(25f)
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 18.dp)
+                    .graphicsLayer {
+                        translationY = controlsTranslationY
+                        alpha = controlsAlpha
+                    },
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(42.dp)
+                        .graphicsLayer {
+                            alpha = (1f - panelProgress * 2f).coerceIn(0f, 1f)
+                        }
+                ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1145,14 +1657,14 @@ fun IosStyledPlayer(
                             .padding(end = 4.dp)
                             .align(Alignment.TopStart)
                             .graphicsLayer {
-                                translationY = -50.dp.toPx()
+                                translationY = if (isTvLandscape) 0f else -50.dp.toPx()
                             }
                             .onGloballyPositioned { coords ->
                                 if (!isPanelOpen && panelProgress < 0.01f) {
                                     val root = rootBoxCoords
                                     if (root != null && root.isAttached && coords.isAttached) {
                                         val pos = root.localPositionOf(coords, Offset.Zero)
-                                        val titleVisualTop = pos.y - with(density) { 50.dp.toPx() }
+                                        val titleVisualTop = pos.y - (if (isTvLandscape) 0f else with(density) { 50.dp.toPx() })
                                         val bottomPx = (root.size.height - titleVisualTop).coerceAtLeast(0f)
                                         if (bottomPx > 0f) {
                                             val newDp = with(density) { bottomPx.toDp() }.coerceAtLeast(0.dp)
@@ -1168,8 +1680,8 @@ fun IosStyledPlayer(
                             text = track.title,
                             style = MaterialTheme.typography.headlineMedium.copy(
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 24.sp,
-                                lineHeight = 28.sp,
+                                fontSize = if (isTvLandscape) 20.sp else 24.sp,
+                                lineHeight = if (isTvLandscape) 24.sp else 28.sp,
                                 letterSpacing = (-0.2).sp
                             ),
                             color = Color.White,
@@ -1185,7 +1697,7 @@ fun IosStyledPlayer(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier
-                                .clickable {
+                                .pressable(focusShape = RoundedCornerShape(8.dp)) {
                                     val aId = track.artistId?.takeIf { it.isNotBlank() } ?: track.artists
                                     onArtistClick?.invoke(MusicArtist(id = aId, name = track.artists))
                                 }
@@ -1193,13 +1705,11 @@ fun IosStyledPlayer(
                         )
                     }
 
-                    // The buttons deliberately retain their size and on-screen position (Right aligned!)
                     Row(
                         modifier = Modifier.align(Alignment.CenterEnd),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // 1. Like
                         ImmersiveCircleActionButton(
                             icon = if (isLiked) R.drawable.yt_fill_experimental_thumb_up_vd_theme_24 else R.drawable.yt_outline_experimental_thumb_up_vd_theme_24,
                             isActive = isLiked,
@@ -1210,7 +1720,6 @@ fun IosStyledPlayer(
                             }
                         )
 
-                        // 2. Dislike / Unlike
                         ImmersiveCircleActionButton(
                             icon = if (isDisliked) R.drawable.yt_fill_experimental_thumb_down_vd_theme_24 else R.drawable.yt_outline_experimental_thumb_down_vd_theme_24,
                             isActive = isDisliked,
@@ -1221,7 +1730,6 @@ fun IosStyledPlayer(
                             }
                         )
 
-                        // 3. Comment
                         ImmersiveCircleActionButton(
                             icon = R.drawable.ic_comment,
                             isActive = commentsOpen,
@@ -1232,7 +1740,6 @@ fun IosStyledPlayer(
                             }
                         )
 
-                        // 4. Share
                         ImmersiveCircleActionButton(
                             icon = R.drawable.ic_share,
                             isActive = false,
@@ -1249,278 +1756,266 @@ fun IosStyledPlayer(
                     }
                 }
 
-                Spacer(Modifier.height(28.dp))
+                Spacer(Modifier.height(if (isTvLandscape) 12.dp else 28.dp))
 
-            // ── Wavy Seek Bar (AirBeats Expressive Squiggly Slider) ──
-            WavySlider(
-                value = displayPos.toFloat(),
-                onValueChange = {
-                    onLyricsInteraction()
-                    isSeeking = true
-                    seekPosition = it.toLong().coerceIn(0L, safeDuration)
-                    if (isVideoMode) {
-                        videoPlayer.seekTo(seekPosition)
-                    }
-                },
-                onValueChangeFinished = {
-                    onLyricsInteraction()
-                    MusicPlayerState.seekTo(seekPosition)
-                    if (isVideoMode) {
-                        videoPlayer.seekTo(seekPosition)
-                    }
-                    isSeeking = false
-                },
-                valueRange = 0f..safeDuration.toFloat(),
-                isPlaying = isPlaying,
-                activeTrackColor = Color.White,
-                inactiveTrackColor = Color.White.copy(alpha = 0.25f),
-                thumbColor = Color.White,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Spacer(Modifier.height(4.dp))
-
-            // ── Time & Audio Quality Tag Row ──
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 2.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = formatTime(displayPos),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = Color.White.copy(alpha = 0.75f)
-                )
-
-                // Center Audio Quality Badge Pill
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(Color.White.copy(alpha = 0.12f))
-                        .clickable {
-                            onLyricsInteraction()
-                            optionsOpen = true
+                WavySlider(
+                    value = displayPos.toFloat(),
+                    onValueChange = {
+                        onLyricsInteraction()
+                        isSeeking = true
+                        seekPosition = it.toLong().coerceIn(0L, safeDuration)
+                        if (isVideoMode) {
+                            videoPlayer.seekTo(seekPosition)
                         }
-                        .padding(horizontal = 12.dp, vertical = 5.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Image(
-                            painter = painterResource(R.drawable.graphic_eq),
-                            contentDescription = null,
-                            colorFilter = ColorFilter.tint(Color.White.copy(alpha = 0.85f)),
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Text(
-                            text = buildAnnotatedString {
-                                withStyle(SpanStyle(color = Color(0xFFFF1744))) { append("i") }
-                                withStyle(SpanStyle(color = Color.White)) { append("Music • 128k") }
-                            },
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium)
-                        )
-                    }
-                }
-
-                Text(
-                    text = "-${formatTime(remaining)}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = Color.White.copy(alpha = 0.75f)
+                    },
+                    onValueChangeFinished = {
+                        onLyricsInteraction()
+                        MusicPlayerState.seekTo(seekPosition)
+                        if (isVideoMode) {
+                            videoPlayer.seekTo(seekPosition)
+                        }
+                        isSeeking = false
+                    },
+                    valueRange = 0f..safeDuration.toFloat(),
+                    isPlaying = isPlaying,
+                    activeTrackColor = Color.White,
+                    inactiveTrackColor = Color.White.copy(alpha = 0.25f),
+                    thumbColor = Color.White,
+                    modifier = Modifier.fillMaxWidth()
                 )
-            }
 
-            Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(4.dp))
 
-            // ── Main Playback Controls (Previous, Play/Pause, Next) ──
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Previous
-                IconButton(
-                    onClick = {
-                        onLyricsInteraction()
-                        MusicPlayerState.skipPrevious()
-                    },
-                    modifier = Modifier.size(54.dp)
-                ) {
-                    Image(
-                        painter = painterResource(R.drawable.skip_previous),
-                        contentDescription = "Previous",
-                        colorFilter = ColorFilter.tint(Color.White),
-                        modifier = Modifier.size(38.dp)
-                    )
-                }
-
-                // Play / Pause
-                Box(
-                    modifier = Modifier
-                        .size(72.dp)
-                        .clip(CircleShape)
-                        .clickable {
-                            onLyricsInteraction()
-                            MusicPlayerState.togglePlayPause()
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (isLoading && !isPlaying) {
-                        CircularProgressIndicator(
-                            color = Color.White,
-                            strokeWidth = 3.dp,
-                            modifier = Modifier.size(44.dp)
-                        )
-                    } else {
-                        Image(
-                            painter = painterResource(
-                                if (isPlaying) R.drawable.pause else R.drawable.play
-                            ),
-                            contentDescription = if (isPlaying) "Pause" else "Play",
-                            colorFilter = ColorFilter.tint(Color.White),
-                            modifier = Modifier.size(48.dp)
-                        )
-                    }
-                }
-
-                // Next
-                IconButton(
-                    onClick = {
-                        onLyricsInteraction()
-                        MusicPlayerState.skipNext()
-                    },
-                    modifier = Modifier.size(54.dp)
-                ) {
-                    Image(
-                        painter = painterResource(R.drawable.skip_next),
-                        contentDescription = "Next",
-                        colorFilter = ColorFilter.tint(Color.White),
-                        modifier = Modifier.size(38.dp)
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(16.dp))
-
-            // ── Volume Seek Bar (iOS Capsule Style) ──
-            IosVolumeSlider(
-                modifier = Modifier.padding(horizontal = 4.dp)
-            )
-
-            Spacer(Modifier.height(16.dp))
-
-            // ── Bottom Action Controls (Queue, Lyrics, YouTube Pill) ──
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 2.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Queue Button
+                    Text(
+                        text = formatTime(displayPos),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Color.White.copy(alpha = 0.75f)
+                    )
+
                     Box(
                         modifier = Modifier
-                            .size(46.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (isQueueOpen) Color.White.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.12f)
-                            )
-                            .clickable {
+                            .pressable(focusShape = RoundedCornerShape(14.dp)) {
                                 onLyricsInteraction()
-                                if (MusicPlayerState.isVideoMode) {
-                                    MusicPlayerState.isVideoMode = false
-                                    MusicPlayerState.isVideoFullscreen = false
-                                    MusicPlayerState.videoFullscreenZoomMode = 0
-                                    videoPlayer.pause()
-                                }
-                                MusicPlayerState.lyricsOpen = false
-                                MusicPlayerState.queueOpen = !MusicPlayerState.queueOpen
-                            },
+                                optionsOpen = true
+                            }
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color.White.copy(alpha = 0.12f))
+                            .padding(horizontal = 12.dp, vertical = 5.dp),
                         contentAlignment = Alignment.Center
                     ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Image(
+                                painter = painterResource(R.drawable.graphic_eq),
+                                contentDescription = null,
+                                colorFilter = ColorFilter.tint(Color.White.copy(alpha = 0.85f)),
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = buildAnnotatedString {
+                                    withStyle(SpanStyle(color = Color(0xFFFF1744))) { append("i") }
+                                    withStyle(SpanStyle(color = Color.White)) { append("Music • 128k") }
+                                },
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium)
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = "-${formatTime(remaining)}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Color.White.copy(alpha = 0.75f)
+                    )
+                }
+
+                Spacer(Modifier.height(if (isTvLandscape) 10.dp else 24.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = {
+                            onLyricsInteraction()
+                            MusicPlayerState.skipPrevious()
+                        },
+                        modifier = Modifier.size(54.dp).tvFocusRing(CircleShape, borderColor = Color.White)
+                    ) {
                         Image(
-                            painter = painterResource(R.drawable.queue_music),
-                            contentDescription = "Queue",
-                            colorFilter = ColorFilter.tint(
-                                if (isQueueOpen) Color.White else Color.White.copy(alpha = 0.90f)
-                            ),
-                            modifier = Modifier.size(24.dp)
+                            painter = painterResource(R.drawable.skip_previous),
+                            contentDescription = "Previous",
+                            colorFilter = ColorFilter.tint(Color.White),
+                            modifier = Modifier.size(38.dp)
                         )
                     }
 
-                    // Lyrics Button
                     Box(
                         modifier = Modifier
-                            .size(46.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (isLyricsOpen) Color.White.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.12f)
-                            )
-                            .clickable {
+                            .size(if (isTvLandscape) 58.dp else 72.dp)
+                            .pressable(focusShape = CircleShape, focusScale = 1.08f) {
                                 onLyricsInteraction()
-                                if (MusicPlayerState.isVideoMode) {
-                                    MusicPlayerState.isVideoMode = false
-                                    MusicPlayerState.isVideoFullscreen = false
-                                    MusicPlayerState.videoFullscreenZoomMode = 0
-                                    videoPlayer.pause()
-                                }
-                                MusicPlayerState.queueOpen = false
-                                MusicPlayerState.lyricsOpen = !MusicPlayerState.lyricsOpen
-                            },
+                                MusicPlayerState.togglePlayPause()
+                            }
+                            .clip(CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
+                        if (isLoading && !isPlaying) {
+                            CircularProgressIndicator(
+                                color = Color.White,
+                                strokeWidth = 3.dp,
+                                modifier = Modifier.size(44.dp)
+                            )
+                        } else {
+                            Image(
+                                painter = painterResource(
+                                    if (isPlaying) R.drawable.pause else R.drawable.play
+                                ),
+                                contentDescription = if (isPlaying) "Pause" else "Play",
+                                colorFilter = ColorFilter.tint(Color.White),
+                                modifier = Modifier.size(if (isTvLandscape) 40.dp else 48.dp)
+                            )
+                        }
+                    }
+
+                    IconButton(
+                        onClick = {
+                            onLyricsInteraction()
+                            MusicPlayerState.skipNext()
+                        },
+                        modifier = Modifier.size(54.dp).tvFocusRing(CircleShape, borderColor = Color.White)
+                    ) {
                         Image(
-                            painter = painterResource(R.drawable.lyrics),
-                            contentDescription = "Lyrics",
-                            colorFilter = ColorFilter.tint(
-                                if (isLyricsOpen) Color.White else Color.White.copy(alpha = 0.90f)
-                            ),
-                            modifier = Modifier.size(24.dp)
+                            painter = painterResource(R.drawable.skip_next),
+                            contentDescription = "Next",
+                            colorFilter = ColorFilter.tint(Color.White),
+                            modifier = Modifier.size(38.dp)
                         )
                     }
                 }
 
-                // YouTube Pill Button -> Directly opens YouTube
-                Box(
-                    modifier = Modifier
-                        .height(44.dp)
-                        .clip(RoundedCornerShape(22.dp))
-                        .background(Color.White.copy(alpha = 0.14f))
-                        .clickable {
-                            onLyricsInteraction()
-                            val videoId = track.id
-                            try {
-                                val ytIntent = Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube:$videoId")).apply {
-                                    setPackage("com.google.android.youtube")
-                                }
-                                context.startActivity(ytIntent)
-                            } catch (_: Exception) {
-                                val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=$videoId"))
-                                context.startActivity(webIntent)
-                            }
-                        }
-                        .padding(horizontal = 16.dp),
-                    contentAlignment = Alignment.Center
+                if (!isTvLandscape) {
+                    Spacer(Modifier.height(16.dp))
+                    IosVolumeSlider(modifier = Modifier.padding(horizontal = 4.dp))
+                }
+
+                Spacer(Modifier.height(if (isTvLandscape) 10.dp else 16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Image(
-                            painter = painterResource(R.drawable.youtube),
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Text(
-                            text = "YouTube",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                            color = Color.White
-                        )
+                        Box(
+                            modifier = Modifier
+                                .size(46.dp)
+                                .pressable(focusShape = CircleShape, focusScale = 1.08f) {
+                                    onLyricsInteraction()
+                                    if (MusicPlayerState.isVideoMode) {
+                                        MusicPlayerState.isVideoMode = false
+                                        MusicPlayerState.isVideoFullscreen = false
+                                        MusicPlayerState.videoFullscreenZoomMode = 0
+                                        videoPlayer.pause()
+                                    }
+                                    MusicPlayerState.lyricsOpen = false
+                                    MusicPlayerState.queueOpen = !MusicPlayerState.queueOpen
+                                }
+                                .clip(CircleShape)
+                                .background(
+                                    if (isQueueOpen) Color.White.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.12f)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Image(
+                                painter = painterResource(R.drawable.queue_music),
+                                contentDescription = "Queue",
+                                colorFilter = ColorFilter.tint(
+                                    if (isQueueOpen) Color.White else Color.White.copy(alpha = 0.90f)
+                                ),
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .size(46.dp)
+                                .pressable(focusShape = CircleShape, focusScale = 1.08f) {
+                                    onLyricsInteraction()
+                                    if (MusicPlayerState.isVideoMode) {
+                                        MusicPlayerState.isVideoMode = false
+                                        MusicPlayerState.isVideoFullscreen = false
+                                        MusicPlayerState.videoFullscreenZoomMode = 0
+                                        videoPlayer.pause()
+                                    }
+                                    MusicPlayerState.queueOpen = false
+                                    MusicPlayerState.lyricsOpen = !MusicPlayerState.lyricsOpen
+                                }
+                                .clip(CircleShape)
+                                .background(
+                                    if (isLyricsOpen) Color.White.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.12f)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Image(
+                                painter = painterResource(R.drawable.lyrics),
+                                contentDescription = "Lyrics",
+                                colorFilter = ColorFilter.tint(
+                                    if (isLyricsOpen) Color.White else Color.White.copy(alpha = 0.90f)
+                                ),
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .height(44.dp)
+                            .pressable(focusShape = RoundedCornerShape(22.dp)) {
+                                onLyricsInteraction()
+                                val videoId = track.id
+                                try {
+                                    val ytIntent = Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube:$videoId")).apply {
+                                        setPackage("com.google.android.youtube")
+                                    }
+                                    context.startActivity(ytIntent)
+                                } catch (_: Exception) {
+                                    val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=$videoId"))
+                                    context.startActivity(webIntent)
+                                }
+                            }
+                            .clip(RoundedCornerShape(22.dp))
+                            .background(Color.White.copy(alpha = 0.14f))
+                            .padding(horizontal = 16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Image(
+                                painter = painterResource(R.drawable.youtube),
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                text = "YouTube",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = Color.White
+                            )
+                        }
                     }
                 }
             }
@@ -1634,9 +2129,9 @@ private fun ImmersiveCircleActionButton(
     Box(
         modifier = Modifier
             .size(42.dp)
+            .pressable(focusShape = CircleShape, focusScale = 1.08f, onClick = onClick)
             .clip(CircleShape)
-            .background(bgColor)
-            .clickable(onClick = onClick),
+            .background(bgColor),
         contentAlignment = Alignment.Center
     ) {
         Image(
@@ -1682,6 +2177,7 @@ private fun MusicOptionsModal(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .focusGroup()
                 .padding(horizontal = 20.dp, vertical = 20.dp)
                 .verticalScroll(rememberScrollState())
         ) {
@@ -1716,14 +2212,17 @@ private fun MusicOptionsModal(
                         color = c.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.clickable {
+                        modifier = Modifier.pressable(focusShape = RoundedCornerShape(8.dp)) {
                             onDismiss()
                             val aId = track.artistId?.takeIf { it.isNotBlank() } ?: track.artists
                             onArtistClick?.invoke(MusicArtist(id = aId, name = track.artists))
                         }
                     )
                 }
-                IconButton(onClick = onDismiss) {
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.tvFocusRing(CircleShape)
+                ) {
                     Icon(Icons.Rounded.Close, contentDescription = "Close", tint = c.onSurfaceVariant)
                 }
             }
@@ -1739,7 +2238,10 @@ private fun MusicOptionsModal(
                         .padding(vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = { showSpeedDialog = false }) {
+                    IconButton(
+                        onClick = { showSpeedDialog = false },
+                        modifier = Modifier.tvFocusRing(CircleShape)
+                    ) {
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = c.onSurface)
                     }
                     Text(
@@ -1755,11 +2257,11 @@ private fun MusicOptionsModal(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
+                            .pressable(focusScale = 1.015f, focusShape = RoundedCornerShape(12.dp)) {
                                 MusicPlayerState.applyPlaybackSpeed(s)
                                 showSpeedDialog = false
                             }
+                            .clip(RoundedCornerShape(12.dp))
                             .padding(horizontal = 16.dp, vertical = 14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
@@ -1783,7 +2285,10 @@ private fun MusicOptionsModal(
                         .padding(vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = { showSleepTimerDialog = false }) {
+                    IconButton(
+                        onClick = { showSleepTimerDialog = false },
+                        modifier = Modifier.tvFocusRing(CircleShape)
+                    ) {
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = c.onSurface)
                     }
                     Text(
@@ -1936,8 +2441,8 @@ private fun MusicOptionItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .pressable(focusScale = 1.015f, focusShape = RoundedCornerShape(14.dp), onClick = onClick)
             .clip(RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -2020,15 +2525,22 @@ fun MusicVideoSwitchPill(
         modifier = modifier
             .width(pillWidth)
             .height(pillHeight)
+            .tvFocusRing(RoundedCornerShape(pillHeight / 2), focusScale = 1.04f, borderColor = Color.White, addFocusable = true)
+            .onPreviewKeyEvent { ev ->
+                if (ev.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                when (ev.key) {
+                    Key.DirectionCenter, Key.Enter, Key.Spacebar -> {
+                        onToggle(!isVideoMode)
+                        true
+                    }
+                    Key.DirectionLeft -> if (isVideoMode) { onToggle(false); true } else false
+                    Key.DirectionRight -> if (!isVideoMode) { onToggle(true); true } else false
+                    else -> false
+                }
+            }
             .clip(RoundedCornerShape(pillHeight / 2))
             .background(Color.Black.copy(alpha = 0.52f))
-            .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(pillHeight / 2))
-            .clickable(
-                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                indication = null
-            ) {
-                onToggle(!isVideoMode)
-            },
+            .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(pillHeight / 2)),
         contentAlignment = Alignment.CenterStart
     ) {
         // Sliding Thumb
@@ -2160,8 +2672,8 @@ private fun QualityOptionRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .pressable(focusScale = 1.015f, focusShape = RoundedCornerShape(12.dp), onClick = onClick)
             .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
@@ -2245,11 +2757,8 @@ private fun InPlayerQueueContent(
 
     LazyColumn(
         state = listState,
-        modifier = modifier.clickable(
-            indication = null,
-            interactionSource = remember { MutableInteractionSource() }
-        ) {
-            onUserInteraction()
+        modifier = modifier.pointerInput(Unit) {
+            detectTapGestures { onUserInteraction() }
         },
         contentPadding = PaddingValues(start = 22.dp, end = 22.dp, top = 8.dp, bottom = 20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -2285,13 +2794,12 @@ private fun InPlayerQueueContent(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
-                        // Shuffle
                         IconButton(
                             onClick = {
                                 onUserInteraction()
                                 MusicPlayerState.toggleShuffle()
                             },
-                            modifier = Modifier.size(36.dp)
+                            modifier = Modifier.size(36.dp).tvFocusRing(CircleShape, borderColor = Color.White)
                         ) {
                             Icon(
                                 painter = painterResource(
@@ -2309,7 +2817,7 @@ private fun InPlayerQueueContent(
                                 onUserInteraction()
                                 MusicPlayerState.toggleRepeat()
                             },
-                            modifier = Modifier.size(36.dp)
+                            modifier = Modifier.size(36.dp).tvFocusRing(CircleShape, borderColor = Color.White)
                         ) {
                             Icon(
                                 painter = painterResource(
@@ -2395,7 +2903,7 @@ private fun InPlayerQueueContent(
                         color = Color.White.copy(alpha = 0.62f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.clickable {
+                        modifier = Modifier.pressable(focusShape = RoundedCornerShape(6.dp)) {
                             val aId = currentTrack.artistId?.takeIf { it.isNotBlank() } ?: currentTrack.artists
                             onArtistClick?.invoke(MusicArtist(id = aId, name = currentTrack.artists))
                         }
@@ -2413,14 +2921,13 @@ private fun InPlayerQueueContent(
 
                 Spacer(Modifier.width(12.dp))
 
-                // Close / Remove Icon
                 IconButton(
                     onClick = {
                         if (currentIndex in queue.indices) {
                             onRemoveTrack(currentIndex)
                         }
                     },
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(32.dp).tvFocusRing(CircleShape, borderColor = Color.White)
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.Close,
@@ -2471,9 +2978,9 @@ private fun InPlayerQueueContent(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .pressable(focusScale = 1.015f, focusShape = RoundedCornerShape(10.dp)) { onTrackClick(item) }
                     .clip(RoundedCornerShape(10.dp))
-                    .clickable { onTrackClick(item) }
-                    .padding(vertical = 4.dp),
+                    .padding(vertical = 4.dp, horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Drag handle icon on left
@@ -2528,7 +3035,7 @@ private fun InPlayerQueueContent(
                         color = Color.White.copy(alpha = 0.62f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.clickable {
+                        modifier = Modifier.pressable(focusShape = RoundedCornerShape(6.dp)) {
                             val aId = item.artistId?.takeIf { it.isNotBlank() } ?: item.artists
                             onArtistClick?.invoke(MusicArtist(id = aId, name = item.artists))
                         }
@@ -2537,7 +3044,6 @@ private fun InPlayerQueueContent(
 
                 Spacer(Modifier.width(8.dp))
 
-                // Close / Remove icon
                 IconButton(
                     onClick = {
                         val targetIdx = currentIndex + 1 + relativeIdx
@@ -2545,7 +3051,7 @@ private fun InPlayerQueueContent(
                             onRemoveTrack(targetIdx)
                         }
                     },
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(32.dp).tvFocusRing(CircleShape, borderColor = Color.White)
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.Close,
@@ -2613,13 +3119,10 @@ private fun IosVolumeSlider(
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Min / Mute icon
-        Icon(
-            imageVector = if (currentVolume == 0) Icons.AutoMirrored.Rounded.VolumeOff else Icons.AutoMirrored.Rounded.VolumeDown,
-            contentDescription = "Mute Volume",
-            tint = Color.White.copy(alpha = 0.65f),
+        Box(
             modifier = Modifier
-                .size(19.dp)
-                .clickable {
+                .size(32.dp)
+                .pressable(focusShape = CircleShape) {
                     if (audioManager != null) {
                         if (currentVolume > 0) {
                             audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0)
@@ -2632,16 +3135,45 @@ private fun IosVolumeSlider(
                             dragFraction = target.toFloat() / maxVolume
                         }
                     }
-                }
-        )
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = if (currentVolume == 0) Icons.AutoMirrored.Rounded.VolumeOff else Icons.AutoMirrored.Rounded.VolumeDown,
+                contentDescription = "Mute Volume",
+                tint = Color.White.copy(alpha = 0.65f),
+                modifier = Modifier.size(19.dp)
+            )
+        }
 
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(8.dp))
 
         // iOS Capsule Slider Track
         BoxWithConstraints(
             modifier = Modifier
                 .weight(1f)
                 .height(28.dp)
+                .tvFocusRing(RoundedCornerShape(12.dp), focusScale = 1.02f, borderColor = Color.White, addFocusable = true)
+                .onPreviewKeyEvent { ev ->
+                    if (ev.type != KeyEventType.KeyDown || audioManager == null) return@onPreviewKeyEvent false
+                    when (ev.key) {
+                        Key.DirectionLeft -> {
+                            val targetVol = (currentVolume - 1).coerceIn(0, maxVolume)
+                            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
+                            currentVolume = targetVol
+                            dragFraction = targetVol.toFloat() / maxVolume
+                            true
+                        }
+                        Key.DirectionRight -> {
+                            val targetVol = (currentVolume + 1).coerceIn(0, maxVolume)
+                            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
+                            currentVolume = targetVol
+                            dragFraction = targetVol.toFloat() / maxVolume
+                            true
+                        }
+                        else -> false
+                    }
+                }
                 .pointerInput(maxVolume) {
                     detectTapGestures { offset ->
                         val w = size.width.toFloat()
@@ -2715,22 +3247,27 @@ private fun IosVolumeSlider(
             )
         }
 
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(8.dp))
 
         // Max volume icon
-        Icon(
-            imageVector = Icons.AutoMirrored.Rounded.VolumeUp,
-            contentDescription = "Max Volume",
-            tint = Color.White.copy(alpha = 0.65f),
+        Box(
             modifier = Modifier
-                .size(19.dp)
-                .clickable {
+                .size(32.dp)
+                .pressable(focusShape = CircleShape) {
                     if (audioManager != null) {
                         audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, maxVolume, 0)
                         currentVolume = maxVolume
                         dragFraction = 1f
                     }
-                }
-        )
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.VolumeUp,
+                contentDescription = "Max Volume",
+                tint = Color.White.copy(alpha = 0.65f),
+                modifier = Modifier.size(19.dp)
+            )
+        }
     }
 }

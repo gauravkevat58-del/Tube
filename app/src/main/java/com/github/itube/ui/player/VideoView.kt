@@ -35,9 +35,18 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
-import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import com.github.itube.ui.tv.LocalIsTv
+import com.github.itube.ui.tv.tvFocusRing
 import coil.compose.AsyncImage
 import com.github.itube.LikeStatus
 import com.github.itube.shareLink
@@ -243,6 +252,9 @@ fun VideoContent(
     LaunchedEffect(interactive) { if (!interactive) { controlsVisible = false; burstActive = false } }
     LaunchedEffect(controlsVisible, fullscreen) { if (!controlsVisible || !fullscreen) drop = null }
     BackHandler(enabled = drop != null) { drop = null }
+    BackHandler(enabled = controlsVisible && fullscreen && drop == null && !moreOpen && !showDownload) {
+        controlsVisible = false
+    }
     val currentInteractive by androidx.compose.runtime.rememberUpdatedState(interactive)
     val currentInactiveTap by androidx.compose.runtime.rememberUpdatedState(onInactiveTap)
     fun toggleControls() { if (overlay) { controlsVisible = !controlsVisible; touched() } }
@@ -262,48 +274,81 @@ fun VideoContent(
     }
     val pip = LocalPictureInPicture.current
     val view = LocalView.current
+    val isTv = LocalIsTv.current
     val tvFocusRequester = remember { FocusRequester() }
-    LaunchedEffect(fullscreen, interactive) {
-        if (fullscreen && interactive) {
+    val playFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(fullscreen, interactive, controlsVisible) {
+        if (!interactive) return@LaunchedEffect
+        if (controlsVisible && overlay) {
+            delay(40)
+            runCatching { playFocusRequester.requestFocus() }
+        } else if (fullscreen) {
             runCatching { tvFocusRequester.requestFocus() }
         }
     }
+    var stageFocused by remember { mutableStateOf(false) }
     Box(
         modifier
             .background(Color.Black)
             .onGloballyPositioned { pip?.videoBounds = it.boundsInWindow() }
+            .then(
+                if (isTv && !fullscreen && !controlsVisible && stageFocused) {
+                    Modifier.border(2.5.dp, MaterialTheme.colorScheme.primary)
+                } else Modifier
+            )
+            .onFocusChanged { stageFocused = it.isFocused }
             .focusRequester(tvFocusRequester)
-            .focusable()
+            .focusable(enabled = (!controlsVisible || !overlay) && interactive)
             .onKeyEvent { keyEvent: KeyEvent ->
                 if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
                     when (keyEvent.nativeKeyEvent.keyCode) {
                         android.view.KeyEvent.KEYCODE_DPAD_CENTER,
                         android.view.KeyEvent.KEYCODE_ENTER,
                         android.view.KeyEvent.KEYCODE_NUMPAD_ENTER -> {
-                            if (!controlsVisible) {
+                            if (overlay && !controlsVisible) {
                                 controlsVisible = true
                                 touched()
-                            } else {
+                                true
+                            } else if (!overlay) {
                                 state.togglePlay()
                                 touched()
-                            }
+                                true
+                            } else false
+                        }
+                        android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+                        android.view.KeyEvent.KEYCODE_SPACE -> {
+                            state.togglePlay()
+                            touched()
                             true
                         }
                         android.view.KeyEvent.KEYCODE_DPAD_LEFT -> {
-                            seekStep(-1)
-                            touched()
-                            true
+                            if (!controlsVisible || !overlay) {
+                                seekStep(-1)
+                                touched()
+                                true
+                            } else false
                         }
                         android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                            seekStep(1)
-                            touched()
-                            true
+                            if (!controlsVisible || !overlay) {
+                                seekStep(1)
+                                touched()
+                                true
+                            } else false
                         }
                         android.view.KeyEvent.KEYCODE_DPAD_UP,
                         android.view.KeyEvent.KEYCODE_DPAD_DOWN -> {
-                            controlsVisible = true
-                            touched()
-                            true
+                            if (overlay && !controlsVisible) {
+                                controlsVisible = true
+                                touched()
+                                true
+                            } else false
+                        }
+                        android.view.KeyEvent.KEYCODE_MENU -> {
+                            if (interactive) {
+                                moreOpen = true
+                                touched()
+                                true
+                            } else false
                         }
                         android.view.KeyEvent.KEYCODE_BACK -> {
                             if (controlsVisible) {
@@ -516,7 +561,7 @@ fun VideoContent(
                 }
             }
         }
-        if (overlay) Box(Modifier.fillMaxSize().graphicsLayer { alpha = visibleAlpha * controlsAlpha() * (1f - scrubFade) }) {
+        if (overlay) Box(Modifier.fillMaxSize().focusGroup().graphicsLayer { alpha = visibleAlpha * controlsAlpha() * (1f - scrubFade) }) {
             Box(
                 Modifier.fillMaxSize().background(
                     Brush.verticalGradient(
@@ -620,8 +665,8 @@ fun VideoContent(
                             .align(Alignment.TopStart)
                             .padding(top = 58.dp, start = 14.dp, end = 14.dp)
                             .fillMaxWidth()
+                            .pressable(enabled = enabled, focusShape = RoundedCornerShape(8.dp)) { touched(); state.sheet = PlayerSheet.Description }
                             .clip(RoundedCornerShape(8.dp))
-                            .pressable { touched(); state.sheet = PlayerSheet.Description }
                     ) {
                         Text(
                             text = state.current?.title.orEmpty(),
@@ -659,6 +704,7 @@ fun VideoContent(
                         buffering = state.isBuffering || (state.loading && state.details == null),
                         size = if (fullscreen) 78.dp else 66.dp,
                         enabled = enabled,
+                        modifier = Modifier.focusRequester(playFocusRequester),
                     ) { touched(); state.togglePlay() }
                     OverlayTile("Next", enabled, seek, onClick = { touched(); state.playNextUp() }) {
                         Icon(painterResource(R.drawable.flow_next), null, tint = Color.Unspecified, modifier = Modifier.size(if (fullscreen) 30.dp else 26.dp))
@@ -752,6 +798,7 @@ fun VideoContent(
                                 FullscreenActionButton(
                                     icon = if (like == LikeStatus.Like) R.drawable.yt_fill_experimental_thumb_up_vd_theme_24 else R.drawable.yt_outline_experimental_thumb_up_vd_theme_24,
                                     contentDescription = if (like == LikeStatus.Like) "Unlike" else "Like",
+                                    enabled = enabled,
                                     onClick = {
                                         touched()
                                         state.setLike(LikeStatus.Like)
@@ -762,6 +809,7 @@ fun VideoContent(
                                 FullscreenActionButton(
                                     icon = if (like == LikeStatus.Dislike) R.drawable.yt_fill_experimental_thumb_down_vd_theme_24 else R.drawable.yt_outline_experimental_thumb_down_vd_theme_24,
                                     contentDescription = if (like == LikeStatus.Dislike) "Remove dislike" else "Dislike",
+                                    enabled = enabled,
                                     onClick = {
                                         touched()
                                         state.setLike(LikeStatus.Dislike)
@@ -773,6 +821,7 @@ fun VideoContent(
                                     FullscreenActionButton(
                                         icon = R.drawable.ic_comment,
                                         contentDescription = "Comments",
+                                        enabled = enabled,
                                         onClick = {
                                             touched()
                                             state.sheet = PlayerSheet.Comments
@@ -784,6 +833,7 @@ fun VideoContent(
                                 FullscreenActionButton(
                                     icon = R.drawable.ic_share,
                                     contentDescription = "Share",
+                                    enabled = enabled,
                                     onClick = {
                                         touched()
                                         state.current?.let { shareLink(context, "https://youtu.be/${it.id}", it.title) }
@@ -794,6 +844,7 @@ fun VideoContent(
                                 FullscreenActionButton(
                                     icon = R.drawable.ic_more_vert,
                                     contentDescription = "More",
+                                    enabled = enabled,
                                     onClick = {
                                         touched()
                                         moreOpen = true
@@ -808,12 +859,12 @@ fun VideoContent(
                                     modifier = Modifier
                                         .width(52.dp)
                                         .height(28.dp)
-                                        .clip(RoundedCornerShape(14.dp))
-                                        .border(1.5.dp, Color.White.copy(alpha = 0.85f), RoundedCornerShape(14.dp))
-                                        .clickable {
+                                        .pressable(enabled = enabled, focusShape = RoundedCornerShape(14.dp)) {
                                             touched()
                                             onToggleFullscreen()
-                                        },
+                                        }
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .border(1.5.dp, Color.White.copy(alpha = 0.85f), RoundedCornerShape(14.dp)),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     if (!nextThumb.isNullOrEmpty()) {
@@ -836,11 +887,11 @@ fun VideoContent(
                                 // Landscape: "More videos" text + thumbnail capsule, tapping exits fullscreen
                                 Row(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .clickable {
+                                        .pressable(enabled = enabled, focusShape = RoundedCornerShape(16.dp)) {
                                             touched()
                                             onToggleFullscreen()
                                         }
+                                        .clip(RoundedCornerShape(16.dp))
                                         .padding(start = 6.dp, end = 2.dp, top = 2.dp, bottom = 2.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1093,13 +1144,14 @@ private fun FullscreenActionButton(
     icon: Int,
     contentDescription: String,
     tint: Color = Color.White,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
     Box(
         modifier = Modifier
-            .size(38.dp)
-            .clip(CircleShape)
-            .clickable(onClick = onClick),
+            .size(44.dp)
+            .pressable(enabled = enabled, focusShape = CircleShape, onClick = onClick)
+            .clip(CircleShape),
         contentAlignment = Alignment.Center
     ) {
         Icon(
@@ -1131,7 +1183,7 @@ private fun OverlayTile(
         modifier
             .squishOn(filled)
             .size(size)
-            .pressable(enabled = enabled) { view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK); onClick() }
+            .pressable(enabled = enabled, focusShape = CircleShape) { view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK); onClick() }
             .clip(CircleShape)
             .background(if (filled) PlayerGlassStrong else tile)
             .semantics { contentDescription = description },
@@ -1157,7 +1209,7 @@ private fun OverlayPill(
             .squishOn(filled)
             .height(height)
             .widthIn(min = height)
-            .pressable(enabled = enabled) { view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK); onClick() }
+            .pressable(enabled = enabled, focusShape = CircleShape) { view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK); onClick() }
             .clip(CircleShape)
             .background(if (filled) PlayerGlassStrong else tile)
             .padding(horizontal = 11.dp)
@@ -1179,7 +1231,7 @@ private fun OverlaySeek(side: Int, enabled: Boolean, size: Dp, tile: Color = Mat
     Box(
         Modifier
             .size(size)
-            .pressable(enabled = enabled) {
+            .pressable(enabled = enabled, focusShape = CircleShape) {
                 view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
                 onSeek()
                 if (!reduced) scope.launch { spin.animateTo(0f, keyframes { durationMillis = 420; side * 50f at 150 }) }
@@ -1199,12 +1251,19 @@ private fun OverlaySeek(side: Int, enabled: Boolean, size: Dp, tile: Color = Mat
 
 /** Play / pause on the video: a full-primary circle [size] across (Derek, 2026-10-31); a spinner while loading. */
 @Composable
-private fun OverlayPlay(playing: Boolean, buffering: Boolean, size: Dp, enabled: Boolean, onClick: () -> Unit) {
+private fun OverlayPlay(
+    playing: Boolean,
+    buffering: Boolean,
+    size: Dp,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
     val view = LocalView.current
     Box(
-        Modifier
+        modifier
             .size(size)
-            .pressable(enabled = enabled) { view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK); onClick() }
+            .pressable(enabled = enabled, focusShape = CircleShape) { view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK); onClick() }
             .clip(CircleShape)
             .background(PlayerGlassStrong),
         contentAlignment = Alignment.Center,
@@ -1469,7 +1528,7 @@ private fun SkipSegmentPill(segment: SponsorBlock.Segment, enabled: Boolean, mod
     Row(
         modifier = modifier
             .height(32.dp)
-            .pressable(enabled = enabled, onClick = onClick)
+            .pressable(enabled = enabled, focusShape = CircleShape, onClick = onClick)
             .clip(CircleShape)
             .background(segment.category.color.copy(alpha = 0.92f))
             .padding(start = 12.dp, end = 8.dp),
@@ -1503,7 +1562,7 @@ private fun SkippedNote(state: PlayerState, modifier: Modifier) {
         Text(
             "Undo",
             color = skip.segment.category.color, fontSize = 12.sp, fontWeight = FontWeight.Black,
-            modifier = Modifier.pressable { state.undoSkip(skip) }.padding(horizontal = 10.dp, vertical = 8.dp),
+            modifier = Modifier.pressable(focusShape = CircleShape) { state.undoSkip(skip) }.padding(horizontal = 10.dp, vertical = 8.dp),
         )
     }
 }
@@ -1563,7 +1622,7 @@ private fun BoxScope.CaptionsDrop(state: PlayerState, open: Boolean, anchor: Rec
     // Fixed while the card is up, so a pick never reshuffles the rows under the finger.
     val options = remember { captionOptions(cap, all = false).filterIsInstance<CaptionOption.Pick>() }
     OverlayDrop(open, shown, anchor, boxHeight, "CAPTIONS", openAt = { if (!cap.on) 0 else 1 + options.indexOfFirst { cap.shows(it) } }, onClose = onClose) { scope ->
-        DropRow(title = "Off", tag = null, selected = !cap.on) {
+        DropRow(title = "Off", tag = null, selected = !cap.on, enabled = open) {
             if (!open) return@DropRow
             cap.turn(false)
             scope.launch { delay(420); currentClose() }
@@ -1578,6 +1637,7 @@ private fun BoxScope.CaptionsDrop(state: PlayerState, open: Boolean, anchor: Rec
                     else -> "download"
                 },
                 selected = cap.shows(option),
+                enabled = open,
             ) {
                 if (!open) return@DropRow
                 cap.pick(option.choice)
@@ -1607,6 +1667,7 @@ private fun BoxScope.QualityDrop(state: PlayerState, open: Boolean, anchor: Rect
                 title = if (h == null) "Auto" else "${h}p",
                 tag = if (h == null) playing else qualityTag(h),
                 selected = picked == h,
+                enabled = open,
             ) {
                 if (!open) return@DropRow
                 picked = h
@@ -1644,6 +1705,7 @@ private fun BoxScope.SpeedDrop(state: PlayerState, open: Boolean, anchor: Rect, 
                     else -> null
                 },
                 selected = same(picked, s),
+                enabled = open,
             ) {
                 if (!open) return@DropRow
                 picked = s
@@ -1652,7 +1714,7 @@ private fun BoxScope.SpeedDrop(state: PlayerState, open: Boolean, anchor: Rect, 
             }
         }
         Spacer(Modifier.height(5.dp))
-        DropRow(title = "Every video", tag = null, selected = PlaybackSpeed.remember) { if (open) state.toggleRememberSpeed() }
+        DropRow(title = "Every video", tag = null, selected = PlaybackSpeed.remember, enabled = open) { if (open) state.toggleRememberSpeed() }
     }
 }
 
@@ -1691,6 +1753,13 @@ private fun BoxScope.OverlayDrop(
     // Fullscreen quality/speed/caption cards must leave the playing video sharp.  The shared
     // popup blur is intentionally not used here; only modal sheets elsewhere use that setting.
     val currentClose by androidx.compose.runtime.rememberUpdatedState(onClose)
+    val dropFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(open) {
+        if (open) {
+            delay(60)
+            runCatching { dropFocusRequester.requestFocus() }
+        }
+    }
     if (open) {
         Box(
             Modifier.fillMaxSize().pointerInput(Unit) {
@@ -1726,6 +1795,8 @@ private fun BoxScope.OverlayDrop(
             .offset { IntOffset((anchor.right - width).roundToInt(), (anchor.bottom + gap).roundToInt()) }
             .width(DropWidth)
             .heightIn(max = room.coerceAtLeast(DropHeaderHeight + DropRowHeight * 2))
+            .focusGroup()
+            .focusRequester(dropFocusRequester)
             .graphicsLayer {
                 val s = 0.4f + 0.6f * shown
                 scaleX = s
@@ -1751,7 +1822,7 @@ private fun BoxScope.OverlayDrop(
 }
 
 @Composable
-private fun DropRow(title: String, tag: String?, selected: Boolean, onClick: () -> Unit) {
+private fun DropRow(title: String, tag: String?, selected: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
     val reduced = rememberReducedMotion()
     val check by animateFloatAsState(
         if (selected) 1f else 0f,
@@ -1764,7 +1835,7 @@ private fun DropRow(title: String, tag: String?, selected: Boolean, onClick: () 
             .padding(bottom = DropRowGap)
             .fillMaxWidth()
             .height(DropRowHeight)
-            .pressable(pressedScale = 0.97f, onClick = onClick)
+            .pressable(enabled = enabled, pressedScale = 0.97f, focusScale = 1.015f, focusShape = RoundedCornerShape(16.dp), onClick = onClick)
             .clip(RoundedCornerShape(16.dp))
             .background(Color.White.copy(alpha = fill))
             .padding(start = 12.dp, end = 10.dp),
@@ -1846,8 +1917,8 @@ private fun QualityRow(title: String, subtitle: String?, selected: Boolean, onCl
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .pressable(pressedScale = 0.98f, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 2.dp)
+            .pressable(pressedScale = 0.98f, focusScale = 1.015f, focusShape = RoundedCornerShape(18.dp), onClick = onClick)
             .clip(RoundedCornerShape(18.dp))
             .background(if (selected) c.primaryContainer else c.primaryContainer.copy(alpha = 0f))
             .padding(horizontal = 12.dp, vertical = 12.dp),
@@ -1875,7 +1946,7 @@ private fun BoxScope.ErrorPanel(message: String, onRetry: () -> Unit, onCollapse
         Text(message, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, lineHeight = 19.sp)
         Spacer(Modifier.height(12.dp))
         Box(
-            Modifier.pressable(onClick = onRetry).clip(CircleShape).background(Color.White).padding(horizontal = 18.dp, vertical = 9.dp),
+            Modifier.pressable(focusShape = CircleShape, onClick = onRetry).clip(CircleShape).background(Color.White).padding(horizontal = 18.dp, vertical = 9.dp),
         ) { Text("Try again", color = Color(0xFF141414), fontWeight = FontWeight.Bold, fontSize = 13.sp) }
     }
 }
@@ -2033,11 +2104,12 @@ fun MorphPlayButton(
         animationSpec = if (reduced) tween(0) else spring(dampingRatio = 0.6f, stiffness = 500f),
         label = "playShape",
     )
+    val shape = RoundedCornerShape(radius)
     Box(
         modifier = Modifier
             .size(size)
-            .pressable(enabled = enabled, onClick = onClick)
-            .clip(RoundedCornerShape(radius))
+            .pressable(enabled = enabled, focusShape = shape, onClick = onClick)
+            .clip(shape)
             .then(backdrop)
             .background(container),
         contentAlignment = Alignment.Center,
@@ -2056,7 +2128,7 @@ fun MorphPlayButton(
 }
 
 /**
- * Scrubber: buffered and played tracks, a knob that grows while dragging. Thin and white on
+ * Scrubber: buffered and played tracks, a knob that grows while dragging or D-pad focused. Thin and white on
  * the video; the audio-only stage passes its own colors and sizes. With [chapters] (start
  * times) the line has a gap at each chapter, as the portrait playback head does.
  */
@@ -2078,14 +2150,32 @@ private fun Scrubber(
     chapters: List<Long> = emptyList(),
 ) {
     var dragFraction by remember { mutableStateOf<Float?>(null) }
+    var focused by remember { mutableStateOf(false) }
     val duration = durationMs.coerceAtLeast(1L)
     val playedFraction = dragFraction ?: (positionMs.toFloat() / duration).coerceIn(0f, 1f)
     val bufferedFraction = (bufferedMs.toFloat() / duration).coerceIn(0f, 1f)
-    val knobRadius by animateDpAsState(if (dragFraction != null) knobDragging else knob, label = "knob")
+    val knobRadius by animateDpAsState(if (dragFraction != null || focused) knobDragging else knob, label = "knob")
+    val focusHaloColor = MaterialTheme.colorScheme.primary
     Canvas(
         modifier = Modifier
             .fillMaxWidth()
-            .height(24.dp)
+            .height(28.dp)
+            .onFocusChanged { focused = it.hasFocus }
+            .focusable(enabled = enabled && durationMs > 0)
+            .onPreviewKeyEvent { ev ->
+                if (!enabled || durationMs <= 0 || ev.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                when (ev.key) {
+                    Key.DirectionLeft -> {
+                        onSeek((positionMs - 10_000L).coerceAtLeast(0L))
+                        true
+                    }
+                    Key.DirectionRight -> {
+                        onSeek((positionMs + 10_000L).coerceAtMost(durationMs))
+                        true
+                    }
+                    else -> false
+                }
+            }
             // Its own layer, so the chapter gaps can be cut out of the line.
             .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
             .pointerInput(enabled, durationMs) {
@@ -2111,7 +2201,7 @@ private fun Scrubber(
                 }
             },
     ) {
-        val trackH = trackHeight.toPx()
+        val trackH = (if (focused) trackHeight + 2.dp else trackHeight).toPx()
         val y = size.height / 2f - trackH / 2f
         val r = CornerRadius(trackH / 2f)
         drawRoundRect(track, Offset(0f, y), Size(size.width, trackH), r)
@@ -2128,6 +2218,11 @@ private fun Scrubber(
             val x = size.width * (start.toFloat() / duration)
             if (x > 0f && x < size.width) drawRect(Color.Black, Offset(x - gap / 2f, y), Size(gap, trackH), blendMode = BlendMode.Clear)
         }
-        drawCircle(played, radius = knobRadius.toPx(), center = Offset(size.width * playedFraction, size.height / 2f))
+        val knobCenter = Offset(size.width * playedFraction, size.height / 2f)
+        if (focused) {
+            drawCircle(focusHaloColor.copy(alpha = 0.35f), radius = knobRadius.toPx() + 6.dp.toPx(), center = knobCenter)
+            drawCircle(Color.White, radius = knobRadius.toPx() + 2.dp.toPx(), center = knobCenter)
+        }
+        drawCircle(played, radius = knobRadius.toPx(), center = knobCenter)
     }
 }

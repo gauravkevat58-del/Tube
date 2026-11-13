@@ -65,6 +65,7 @@ import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PictureInPictureAlt
 import androidx.compose.material.icons.rounded.SkipNext
 import com.github.itube.ui.components.MaterialLoader
+import com.github.itube.ui.tv.tvFocusRing
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -561,7 +562,7 @@ internal fun BarKey(bar: PlayerBarState, enabled: Boolean, modifier: Modifier) {
     Box(
         modifier
             .size(SideSlotWidth)
-            .pressable(enabled = enabled) {
+            .pressable(enabled = enabled, focusShape = CircleShape) {
                 haptic(view, HapticFeedbackConstants.CONTEXT_CLICK)
                 if (bar.isOpen) bar.closeAll() else bar.openCard()
             }
@@ -600,7 +601,7 @@ internal fun BarAudioOnly(player: PlayerState, enabled: Boolean, modifier: Modif
         modifier
             .squishOn(on)
             .size(SideSlotWidth)
-            .pressable(enabled = enabled) {
+            .pressable(enabled = enabled, focusShape = CircleShape) {
                 haptic(view, HapticFeedbackConstants.CONTEXT_CLICK)
                 player.setAudioOnly(!on)
             }
@@ -647,7 +648,7 @@ internal fun BarCard(bar: PlayerBarState, player: PlayerState, gate: () -> Float
                     if (!chapters) Modifier else Modifier
                         .padding(bottom = 6.dp)
                         .height(ChaptersButtonHeight)
-                        .pressable(enabled = live) {
+                        .pressable(enabled = live, focusShape = CircleShape) {
                             haptic(view, HapticFeedbackConstants.CONTEXT_CLICK)
                             bar.openPanel(BarPanel.Chapters)
                         }
@@ -688,7 +689,7 @@ internal fun BarCard(bar: PlayerBarState, player: PlayerState, gate: () -> Float
                     Column(
                         Modifier
                             .size(PetalSize)
-                            .pressable(enabled = live) { haptic(view, HapticFeedbackConstants.CONTEXT_CLICK); onPick(tool) }
+                            .pressable(enabled = live, focusShape = CircleShape) { haptic(view, HapticFeedbackConstants.CONTEXT_CLICK); onPick(tool) }
                             .clip(CircleShape)
                             .background(if (filled) c.primary else tile),
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -932,7 +933,7 @@ private fun BarQualityList(bar: PlayerBarState, player: PlayerState, gate: () ->
                             alpha = k
                             translationY = 18.dp.toPx() * (1f - Motion.Emphasized.transform(k))
                         }
-                        .pressable(enabled = live, pressedScale = 0.97f) {
+                        .pressable(enabled = live, pressedScale = 0.97f, focusScale = 1.015f, focusShape = RoundedCornerShape(50)) {
                             haptic(view, HapticFeedbackConstants.CONTEXT_CLICK)
                             picked = h
                             player.setQuality(h)
@@ -1019,7 +1020,7 @@ private fun BarChaptersList(bar: PlayerBarState, player: PlayerState, gate: () -
                             alpha = k
                             translationY = 18.dp.toPx() * (1f - Motion.Emphasized.transform(k))
                         }
-                        .pressable(enabled = live, pressedScale = 0.97f) {
+                        .pressable(enabled = live, pressedScale = 0.97f, focusScale = 1.015f, focusShape = RoundedCornerShape(18.dp)) {
                             haptic(view, HapticFeedbackConstants.CONTEXT_CLICK)
                             player.seekTo(chapter.startMs)
                             // The fill lands on the picked chapter, then the bar folds back down.
@@ -1087,7 +1088,7 @@ private fun BarCaptionsList(bar: PlayerBarState, player: PlayerState, gate: () -
                 onCheckedChange = { on -> if (live) { haptic(view, HapticFeedbackConstants.CONTEXT_CLICK); cap.turn(on); fold() } },
                 enabled = cap.choice != null,
                 colors = SwitchDefaults.colors(checkedTrackColor = c.primary),
-                modifier = Modifier.scale(0.85f),
+                modifier = Modifier.scale(0.85f).tvFocusRing(CircleShape, focusScale = 1.08f),
             )
         }
         LazyColumn(
@@ -1112,7 +1113,7 @@ private fun BarCaptionsList(bar: PlayerBarState, player: PlayerState, gate: () -
                             translationY = 18.dp.toPx() * (1f - Motion.Emphasized.transform(k))
                         }
                         .then(
-                            if (option == CaptionOption.Section) Modifier else Modifier.pressable(enabled = live, pressedScale = 0.97f) {
+                            if (option == CaptionOption.Section) Modifier else Modifier.pressable(enabled = live, pressedScale = 0.97f, focusScale = 1.015f, focusShape = RoundedCornerShape(50)) {
                                 haptic(view, HapticFeedbackConstants.CONTEXT_CLICK)
                                 when (option) {
                                     is CaptionOption.Pick -> { cap.pick(option.choice); fold() }

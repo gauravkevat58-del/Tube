@@ -78,6 +78,7 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import com.github.itube.ui.components.BlurSetting
+import com.github.itube.ui.tv.tvFocusRing
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.layout
@@ -489,10 +490,12 @@ private fun PlaySlot(
             .fillMaxHeight()
             .onPlaced { anchors.controls[1] = it }
             .then(
-                if (!enabled) Modifier else Modifier.clickable(interactionSource = interaction, indication = null) {
-                    view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
-                    player.togglePlay()
-                },
+                if (!enabled) Modifier else Modifier
+                    .tvFocusRing(shape = CircleShape, focusScale = 1.04f)
+                    .clickable(interactionSource = interaction, indication = null) {
+                        view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                        player.togglePlay()
+                    },
             )
             .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,

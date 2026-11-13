@@ -171,8 +171,8 @@ fun CircleAction(icon: ImageVector, contentDescription: String, onClick: () -> U
     val c = MaterialTheme.colorScheme
     Box(
         modifier = Modifier
-            .size(44.dp)
-            .pressable(onClick = onClick)
+            .size(48.dp)
+            .pressable(focusShape = CircleShape, onClick = onClick)
             .clip(CircleShape)
             .background(c.surfaceContainerHigh),
         contentAlignment = Alignment.Center,
@@ -309,7 +309,7 @@ fun VideoCard(video: VideoItem, onClick: () -> Unit, modifier: Modifier = Modifi
             .padding(horizontal = 6.dp, vertical = 7.dp)
             .fillMaxWidth()
             .prefetchOnPress(video.id)
-            .pressable(pressedScale = 0.97f, onLongClick = { menu(video) }, onClick = onClick)
+            .pressable(pressedScale = 0.97f, focusScale = 1.03f, focusShape = shape, onLongClick = { menu(video) }, onClick = onClick)
             .clip(shape)
             .background(c.surfaceContainerLow)
             .padding(5.dp),
@@ -321,7 +321,7 @@ fun VideoCard(video: VideoItem, onClick: () -> Unit, modifier: Modifier = Modifi
         }
         Row(modifier = Modifier.padding(start = 8.dp, end = 6.dp, top = 12.dp, bottom = 10.dp)) {
             val openChannel = LocalChannelOpener.current
-            Box(Modifier.pressable(enabled = video.channelUrl != null) { video.channelUrl?.let(openChannel) }) {
+            Box(Modifier.pressable(enabled = video.channelUrl != null, focusShape = CircleShape) { video.channelUrl?.let(openChannel) }) {
                 ChannelAvatar(video.avatar, video.channel)
             }
             Spacer(Modifier.width(12.dp))
@@ -383,8 +383,8 @@ fun VideoRow(video: VideoItem, onClick: () -> Unit, trailing: (@Composable () ->
         modifier = Modifier
             .fillMaxWidth()
             .prefetchOnPress(video.id)
-            .pressable(pressedScale = 0.97f, onLongClick = { menu(video) }, onClick = onClick)
-            .padding(vertical = 6.dp),
+            .pressable(pressedScale = 0.97f, focusScale = 1.015f, focusShape = RoundedCornerShape(16.dp), onLongClick = { menu(video) }, onClick = onClick)
+            .padding(vertical = 6.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.width(140.dp)) {
@@ -455,11 +455,11 @@ fun PillButton(text: String, onClick: () -> Unit, icon: ImageVector? = null) {
     val c = MaterialTheme.colorScheme
     Row(
         modifier = Modifier
-            .pressable(onClick = onClick)
-            .height(44.dp)
+            .pressable(focusShape = CircleShape, onClick = onClick)
+            .height(48.dp)
             .clip(CircleShape)
             .background(c.primary)
-            .padding(horizontal = 20.dp),
+            .padding(horizontal = 22.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {

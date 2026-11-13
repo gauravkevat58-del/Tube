@@ -67,9 +67,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import com.github.itube.ui.tv.tvFocusRing
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
@@ -167,6 +175,23 @@ internal fun SpeedPanelContent(state: PlayerState, inBar: Boolean = false) {
                 .padding(top = 10.dp)
                 .fillMaxWidth()
                 .height(62.dp)
+                .tvFocusRing(RoundedCornerShape(16.dp), focusScale = 1.01f, addFocusable = true)
+                .onPreviewKeyEvent { ev ->
+                    if (ev.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                    when (ev.key) {
+                        Key.DirectionLeft -> {
+                            val next = PlaybackSpeed.snap((value.value - PlaybackSpeed.STEP).coerceAtLeast(PlaybackSpeed.MIN))
+                            glideTo(next)
+                            true
+                        }
+                        Key.DirectionRight -> {
+                            val next = PlaybackSpeed.snap((value.value + PlaybackSpeed.STEP).coerceAtMost(PlaybackSpeed.MAX))
+                            glideTo(next)
+                            true
+                        }
+                        else -> false
+                    }
+                }
                 .draggable(
                     state = rememberDraggableState { delta ->
                         scope.launch(start = CoroutineStart.UNDISPATCHED) {
@@ -229,11 +254,11 @@ internal fun SpeedPanelContent(state: PlayerState, inBar: Boolean = false) {
             Box(
                 Modifier
                     .graphicsLayer { alpha = resetAlpha }
-                    .height(36.dp)
-                    .pressable(enabled = !atOne) { glideTo(1f) }
-                    .clip(RoundedCornerShape(18.dp))
+                    .height(40.dp)
+                    .pressable(enabled = !atOne, focusShape = CircleShape) { glideTo(1f) }
+                    .clip(CircleShape)
                     .background(c.surfaceContainerHighest)
-                    .padding(horizontal = 14.dp),
+                    .padding(horizontal = 16.dp),
                 contentAlignment = Alignment.Center,
             ) { Text("1×", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold) }
         }
@@ -268,7 +293,7 @@ private fun RememberCheck(checked: Boolean, modifier: Modifier, onToggle: () -> 
     val radius by animateDpAsState(if (checked) 9.dp else 7.dp, if (reduced) tween(0) else spring(dampingRatio = 0.6f, stiffness = 500f), label = "checkShape")
     val fill by animateColorAsState(if (checked) c.primary else c.surfaceContainerHighest, tween(200), label = "checkFill")
     val mark by animateFloatAsState(if (checked) 1f else 0f, if (reduced) tween(0) else spring(dampingRatio = 0.5f, stiffness = 600f), label = "checkMark")
-    Row(modifier.pressable(pressedScale = 0.98f, onClick = onToggle).padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier.pressable(pressedScale = 0.98f, focusScale = 1.015f, focusShape = RoundedCornerShape(14.dp), onClick = onToggle).padding(vertical = 12.dp, horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(24.dp).background(fill, RoundedCornerShape(radius)), contentAlignment = Alignment.Center) {
             Icon(
                 Icons.Rounded.Check, null, tint = c.onPrimary,

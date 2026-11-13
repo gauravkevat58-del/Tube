@@ -87,8 +87,13 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.LibraryAdd
 import com.github.itube.ui.components.MaterialLoader
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.border
+import androidx.compose.foundation.focusGroup
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -123,6 +128,7 @@ fun VideoOptionsSheet(
         containerColor = popupContainerColor(c.surfaceContainerLow),
         scrimColor = popupScrimColor(),
     ) {
+        Column(Modifier.fillMaxWidth().focusGroup()) {
         Row(Modifier.padding(horizontal = 20.dp).padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Thumbnail(video.thumbnail, Modifier.width(112.dp).aspectRatio(16f / 9f), radius = 14)
             Spacer(Modifier.width(14.dp))
@@ -164,6 +170,7 @@ fun VideoOptionsSheet(
             onDismiss()
         }
         Spacer(Modifier.height(24.dp))
+        }
     }
 }
 
@@ -194,7 +201,7 @@ fun SaveToPlaylistSheet(player: PlayerState, video: VideoItem, maxHeight: Dp) {
         val nav = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
         val listHeight = (maxHeight - SheetHandleHeight - nav).coerceAtLeast(240.dp)
         Box(Modifier.height(listHeight)) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).focusGroup().padding(bottom = 24.dp)) {
             Text(
                 "Save to playlist",
                 fontFamily = RoundedHeavy, fontWeight = FontWeight.ExtraBold, fontSize = 21.sp,
@@ -268,7 +275,7 @@ private fun PlaylistChoiceRow(choice: PlaylistChoice, onClick: () -> Unit) {
     val c = MaterialTheme.colorScheme
     val on = choice.contains == true
     Row(
-        Modifier.fillMaxWidth().pressable(pressedScale = 0.98f, onClick = onClick).padding(horizontal = 24.dp, vertical = 12.dp),
+        Modifier.fillMaxWidth().pressable(pressedScale = 0.98f, focusScale = 1.015f, focusShape = RoundedCornerShape(14.dp), onClick = onClick).padding(horizontal = 24.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Picking one plays Save's drop on its icon (and a haptic).
@@ -341,9 +348,16 @@ private fun NewPlaylistRow(onCreate: (title: String, privacy: String) -> Unit) {
         onCreate(name, privacy)
         open = false
     }
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+    var fieldFocused by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth().focusGroup().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Box(
-            Modifier.fillMaxWidth().height(56.dp).clip(CircleShape).background(c.surfaceContainerHigh).padding(horizontal = 20.dp),
+            Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .border(if (fieldFocused) 2.5.dp else 0.dp, if (fieldFocused) c.primary else Color.Transparent, CircleShape)
+                .clip(CircleShape)
+                .background(c.surfaceContainerHigh)
+                .padding(horizontal = 20.dp),
             contentAlignment = Alignment.CenterStart,
         ) {
             if (title.isEmpty()) Text("Playlist name", color = c.onSurfaceVariant, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
@@ -355,12 +369,19 @@ private fun NewPlaylistRow(onCreate: (title: String, privacy: String) -> Unit) {
                 cursorBrush = SolidColor(c.primary),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done, capitalization = KeyboardCapitalization.Sentences),
                 keyboardActions = KeyboardActions(onDone = { create() }),
-                modifier = Modifier.fillMaxWidth().focusRequester(focusRequester).onPreviewKeyEvent { e ->
-                    if (e.key == Key.Enter || e.key == Key.NumPadEnter) {
-                        if (e.type == KeyEventType.KeyDown) create()
-                        true
-                    } else false
-                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(focusRequester)
+                    .onFocusChanged { fieldFocused = it.isFocused }
+                    .onPreviewKeyEvent { e ->
+                        if (e.key == Key.Enter || e.key == Key.NumPadEnter) {
+                            if (e.type == KeyEventType.KeyDown) create()
+                            true
+                        } else if (e.key == Key.DirectionDown && e.type == KeyEventType.KeyDown) {
+                            focus.moveFocus(FocusDirection.Down)
+                            true
+                        } else false
+                    },
             )
         }
         Spacer(Modifier.height(10.dp))
@@ -368,10 +389,11 @@ private fun NewPlaylistRow(onCreate: (title: String, privacy: String) -> Unit) {
             Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf("PRIVATE", "UNLISTED", "PUBLIC").forEach { key ->
                     val on = privacy == key
+                    val chipShape = RoundedCornerShape(if (on) 18.dp else 10.dp)
                     Box(
                         Modifier
-                            .pressable { privacy = key }
-                            .clip(RoundedCornerShape(if (on) 18.dp else 10.dp))
+                            .pressable(focusShape = chipShape) { privacy = key }
+                            .clip(chipShape)
                             .background(if (on) c.secondaryContainer else c.surfaceContainerHighest)
                             .padding(horizontal = 14.dp, vertical = 8.dp),
                     ) { Text(privacyLabel(key)!!, color = if (on) c.onSecondaryContainer else c.onSurfaceVariant, fontWeight = FontWeight.Bold, fontSize = 13.sp) }
@@ -381,7 +403,7 @@ private fun NewPlaylistRow(onCreate: (title: String, privacy: String) -> Unit) {
             val ready = title.isNotBlank()
             Box(
                 Modifier
-                    .pressable(enabled = ready, onClick = ::create)
+                    .pressable(enabled = ready, focusShape = CircleShape, onClick = ::create)
                     .clip(CircleShape)
                     .background(c.primary)
                     .graphicsLayer { alpha = if (ready) 1f else 0.4f }
@@ -395,7 +417,7 @@ private fun NewPlaylistRow(onCreate: (title: String, privacy: String) -> Unit) {
 private fun OptionRow(icon: ImageVector, label: String, onClick: () -> Unit) {
     val c = MaterialTheme.colorScheme
     Row(
-        Modifier.fillMaxWidth().pressable(pressedScale = 0.98f, onClick = onClick).padding(horizontal = 24.dp, vertical = 15.dp),
+        Modifier.fillMaxWidth().pressable(pressedScale = 0.98f, focusScale = 1.015f, focusShape = RoundedCornerShape(14.dp), onClick = onClick).padding(horizontal = 24.dp, vertical = 15.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(icon, null, tint = c.onSurface)
@@ -430,7 +452,7 @@ fun QueueCard(player: PlayerState, onOpen: () -> Unit) {
             Modifier
                 .padding(top = 16.dp)
                 .fillMaxWidth()
-                .pressable(enabled = !leaving, pressedScale = 0.98f, onClick = onOpen)
+                .pressable(enabled = !leaving, pressedScale = 0.98f, focusScale = 1.02f, focusShape = RoundedCornerShape(24.dp), onClick = onOpen)
                 .clip(RoundedCornerShape(24.dp))
                 .background(c.secondaryContainer)
                 .padding(12.dp),
@@ -449,7 +471,7 @@ fun QueueCard(player: PlayerState, onOpen: () -> Unit) {
             // Its own tap: clearing doesn't open the sheet.
             Row(
                 Modifier
-                    .pressable(enabled = !leaving) { player.clearQueue() }
+                    .pressable(enabled = !leaving, focusShape = CircleShape) { player.clearQueue() }
                     .clip(CircleShape)
                     .background(c.secondary)
                     .padding(start = 10.dp, end = 14.dp, top = 8.dp, bottom = 8.dp),
@@ -481,13 +503,14 @@ fun QueueSheet(player: PlayerState, onDismiss: () -> Unit) {
     }
     val clearAlpha by animateFloatAsState(if (leavingRows == null && player.queue.isNotEmpty()) 1f else 0f, label = "clearAlpha")
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = c.surfaceContainerLow) {
+        Column(Modifier.fillMaxWidth().focusGroup()) {
         Row(Modifier.padding(horizontal = 20.dp).padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Queue", fontFamily = RoundedHeavy, fontWeight = FontWeight.ExtraBold, fontSize = 21.sp, modifier = Modifier.weight(1f))
             Text(
                 "Clear", color = c.primary, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp,
                 modifier = Modifier
                     .graphicsLayer { alpha = clearAlpha }
-                    .pressable(enabled = leavingRows == null && player.queue.isNotEmpty()) {
+                    .pressable(enabled = leavingRows == null && player.queue.isNotEmpty(), focusShape = CircleShape) {
                         val visible = listState.layoutInfo.visibleItemsInfo.size.coerceAtLeast(1)
                         leavingRows = player.queue
                         player.clearQueue()
@@ -512,7 +535,7 @@ fun QueueSheet(player: PlayerState, onDismiss: () -> Unit) {
                         SlideAway(slide = { Motion.Exit.transform(((sweep.value - SlideAwayStaggerMs * order) / SlideAwayMs).coerceIn(0f, 1f)) }) {
                             Box(Modifier.padding(horizontal = 20.dp)) {
                                 VideoRow(video, onClick = { player.playFromQueue(index); onDismiss() }) {
-                                    Box(Modifier.size(40.dp).pressable { player.removeFromQueue(index) }, contentAlignment = Alignment.Center) {
+                                    Box(Modifier.size(40.dp).pressable(focusShape = CircleShape) { player.removeFromQueue(index) }, contentAlignment = Alignment.Center) {
                                         Icon(Icons.Rounded.Close, "Remove from queue", tint = c.onSurfaceVariant)
                                     }
                                 }
@@ -537,6 +560,7 @@ fun QueueSheet(player: PlayerState, onDismiss: () -> Unit) {
             }
         }
         Spacer(Modifier.height(24.dp))
+        }
     }
 }
 
@@ -593,10 +617,11 @@ private fun CategoryRow(category: SponsorBlock.Category) {
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             SponsorBlock.Action.entries.forEach { action ->
                 val on = action == current
+                val chipShape = RoundedCornerShape(if (on) 18.dp else 10.dp)
                 Box(
                     Modifier
-                        .pressable { SponsorBlock.setAction(category, action) }
-                        .clip(RoundedCornerShape(if (on) 18.dp else 10.dp))
+                        .pressable(focusShape = chipShape) { SponsorBlock.setAction(category, action) }
+                        .clip(chipShape)
                         .background(if (on) c.secondaryContainer else c.surfaceContainerHighest)
                         .padding(horizontal = 14.dp, vertical = 8.dp),
                 ) {
@@ -660,10 +685,23 @@ private fun SettingSwitchRow(title: String, line: String, checked: Boolean, onCh
     val rtl = rememberRtlLanguage()
     val toggle = @Composable {
         CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
-            Switch(checked = checked, onCheckedChange = onCheckedChange, colors = SwitchDefaults.colors(checkedTrackColor = c.primary))
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                modifier = Modifier.focusProperties { canFocus = false },
+                colors = SwitchDefaults.colors(checkedTrackColor = c.primary),
+            )
         }
     }
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .pressable(pressedScale = 0.99f, focusScale = 1.015f, focusShape = RoundedCornerShape(16.dp)) {
+                onCheckedChange(!checked)
+            }
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         if (rtl) {
             toggle()
             Spacer(Modifier.width(14.dp))
@@ -692,10 +730,11 @@ fun AppearanceSettings() {
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             listOf("system" to "System", "light" to "Light", "dark" to "Dark", "amoled" to "AMOLED").forEach { (key, label) ->
                 val on = ThemeSettings.mode == key
+                val chipShape = RoundedCornerShape(if (on) 18.dp else 10.dp)
                 Box(
                     Modifier
-                        .pressable { ThemeSettings.chooseMode(key) }
-                        .clip(RoundedCornerShape(if (on) 18.dp else 10.dp))
+                        .pressable(focusShape = chipShape) { ThemeSettings.chooseMode(key) }
+                        .clip(chipShape)
                         .background(if (on) c.secondaryContainer else c.surfaceContainerHighest)
                         .padding(horizontal = 16.dp, vertical = 9.dp),
                 ) { Text(label, color = if (on) c.onSecondaryContainer else c.onSurfaceVariant, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, softWrap = false) }
@@ -711,7 +750,7 @@ fun AppearanceSettings() {
                 val selected = ThemeSettings.seed?.lowercase() == hex?.lowercase()
                 val scheme = themedScheme(context, hex, dark)
                 Column(
-                    Modifier.width(78.dp).pressable { ThemeSettings.choose(hex) },
+                    Modifier.width(78.dp).pressable(focusShape = RoundedCornerShape(14.dp)) { ThemeSettings.choose(hex) }.padding(vertical = 4.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Box(

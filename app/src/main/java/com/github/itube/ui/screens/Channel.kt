@@ -6,7 +6,7 @@ import android.content.Context
 import android.content.ClipData
 import android.widget.Toast
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
@@ -63,11 +63,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.github.itube.ui.tv.LocalIsTv
+import com.github.itube.ui.tv.tvFocusRing
+import com.github.itube.ui.tv.tvGridColumns
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.schabi.newpipe.extractor.Page
@@ -169,6 +173,8 @@ fun ChannelScreen(
     onMessage: (String) -> Unit,
 ) {
     val c = MaterialTheme.colorScheme
+    val isTv = LocalIsTv.current
+    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     val list = rememberLazyListState()
     var section by remember(state.url) { mutableStateOf(ChannelSection.Videos) }
     val nearEnd by remember {
@@ -249,9 +255,9 @@ fun ChannelScreen(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 14.sp,
                                 modifier = Modifier
+                                    .pressable(focusShape = CircleShape, focusScale = 1.04f) { section = tab }
                                     .clip(CircleShape)
                                     .background(if (active) c.primary else c.surfaceContainerHigh)
-                                    .clickable { section = tab }
                                     .padding(horizontal = 16.dp, vertical = 9.dp),
                             )
                         }
@@ -260,7 +266,22 @@ fun ChannelScreen(
                 when (section) {
                     ChannelSection.Videos -> {
                         item(key = "videosTitle") { SectionTitle("Videos") }
-                        items(state.videos, key = { it.id }) { video -> VideoCard(video, onClick = { onOpen(video) }) }
+                        val videoCols = if (isTv) tvGridColumns(screenWidth, 280.dp, 3) else 1
+                        if (videoCols > 1) {
+                            items(state.videos.chunked(videoCols), key = { "vrow-${it.first().id}" }) { row ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    row.forEach { video ->
+                                        Box(Modifier.weight(1f)) { VideoCard(video, onClick = { onOpen(video) }) }
+                                    }
+                                    repeat(videoCols - row.size) { Spacer(Modifier.weight(1f)) }
+                                }
+                            }
+                        } else {
+                            items(state.videos, key = { it.id }) { video -> VideoCard(video, onClick = { onOpen(video) }) }
+                        }
                     }
                     ChannelSection.Shorts -> {
                         item(key = "shortsTitle") { SectionTitle("Shorts") }
@@ -271,7 +292,8 @@ fun ChannelScreen(
                                 }
                             }
                         } else {
-                            items(state.shorts.chunked(3), key = { chunk -> chunk.first().id }) { rowShorts ->
+                            val shortCols = if (isTv) tvGridColumns(screenWidth, 160.dp, 5) else 3
+                            items(state.shorts.chunked(shortCols), key = { chunk -> chunk.first().id }) { rowShorts ->
                                 Row(
                                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -281,7 +303,7 @@ fun ChannelScreen(
                                             ChannelShortCard(short = short, onClick = { onOpenShort(short) })
                                         }
                                     }
-                                    repeat(3 - rowShorts.size) {
+                                    repeat(shortCols - rowShorts.size) {
                                         Spacer(modifier = Modifier.weight(1f))
                                     }
                                 }
@@ -297,7 +319,8 @@ fun ChannelScreen(
                                 }
                             }
                         } else {
-                            items(state.releases.chunked(2), key = { chunk -> chunk.first().url }) { rowReleases ->
+                            val relCols = if (isTv) tvGridColumns(screenWidth, 210.dp, 4) else 2
+                            items(state.releases.chunked(relCols), key = { chunk -> chunk.first().url }) { rowReleases ->
                                 Row(
                                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
                                     horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -307,7 +330,7 @@ fun ChannelScreen(
                                             ChannelCollectionCard(col = col, onClick = { onOpenCollection(col) })
                                         }
                                     }
-                                    repeat(2 - rowReleases.size) {
+                                    repeat(relCols - rowReleases.size) {
                                         Spacer(modifier = Modifier.weight(1f))
                                     }
                                 }
@@ -323,7 +346,8 @@ fun ChannelScreen(
                                 }
                             }
                         } else {
-                            items(state.playlists.chunked(2), key = { chunk -> chunk.first().url }) { rowPlaylists ->
+                            val plCols = if (isTv) tvGridColumns(screenWidth, 210.dp, 4) else 2
+                            items(state.playlists.chunked(plCols), key = { chunk -> chunk.first().url }) { rowPlaylists ->
                                 Row(
                                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
                                     horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -333,7 +357,7 @@ fun ChannelScreen(
                                             ChannelCollectionCard(col = col, onClick = { onOpenCollection(col) })
                                         }
                                     }
-                                    repeat(2 - rowPlaylists.size) {
+                                    repeat(plCols - rowPlaylists.size) {
                                         Spacer(modifier = Modifier.weight(1f))
                                     }
                                 }
@@ -358,12 +382,13 @@ fun ChannelScreen(
 @Composable
 private fun ChannelShortCard(short: VideoItem, onClick: () -> Unit) {
     val menu = LocalVideoMenu.current
+    val shape = RoundedCornerShape(14.dp)
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(9f / 16f)
-            .clip(RoundedCornerShape(14.dp))
-            .pressable(pressedScale = 0.98f, onLongClick = { menu(short) }, onClick = onClick)
+            .pressable(pressedScale = 0.98f, focusScale = 1.03f, focusShape = shape, onLongClick = { menu(short) }, onClick = onClick)
+            .clip(shape)
     ) {
         Thumbnail(
             url = short.shortThumbnail,
@@ -412,11 +437,12 @@ private fun ChannelShortCard(short: VideoItem, onClick: () -> Unit) {
 private fun ChannelCollectionCard(col: PublicCollection, onClick: () -> Unit) {
     val c = MaterialTheme.colorScheme
     val menu = LocalCollectionMenu.current
+    val cardShape = RoundedCornerShape(16.dp)
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .pressable(pressedScale = 0.98f, onLongClick = { menu(col) }, onClick = onClick)
+            .pressable(pressedScale = 0.98f, focusScale = 1.03f, focusShape = cardShape, onLongClick = { menu(col) }, onClick = onClick)
+            .clip(cardShape)
             .padding(4.dp)
     ) {
         Box(
@@ -467,10 +493,12 @@ private enum class ChannelSection(val label: String) { Videos("Videos"), Shorts(
 fun PublicCollectionRow(collection: PublicCollection, onOpen: (PublicCollection) -> Unit) {
     val c = MaterialTheme.colorScheme
     val menu = LocalCollectionMenu.current
+    val rowShape = RoundedCornerShape(16.dp)
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 7.dp).clip(RoundedCornerShape(16.dp))
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 7.dp)
+            .pressable(pressedScale = 0.985f, focusScale = 1.02f, focusShape = rowShape, onLongClick = { menu(collection) }, onClick = { onOpen(collection) })
+            .clip(rowShape)
             .background(c.surfaceContainerLow)
-            .pressable(pressedScale = 0.985f, onLongClick = { menu(collection) }, onClick = { onOpen(collection) })
             .padding(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -557,11 +585,15 @@ fun PublicCollectionScreen(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                IconButton(onClick = { openCollectionMenu(state.collection) }) {
+                IconButton(
+                    onClick = { openCollectionMenu(state.collection) },
+                    modifier = Modifier.tvFocusRing(CircleShape),
+                ) {
                     Icon(Icons.Rounded.MoreVert, contentDescription = "Collection options", tint = c.onSurface)
                 }
             }
         }) { top ->
+            val isTv = LocalIsTv.current
             when {
                 state.loading && state.details == null -> Box(Modifier.fillMaxWidth().padding(top = top + 64.dp), Alignment.Center) { MaterialLoader(color = c.primary, size = 36.dp) }
                 state.error != null -> Box(Modifier.padding(top = top)) { EmptyState(Icons.Rounded.CloudOff, "Couldn't load this ${if (state.collection.isAlbum) "album" else "playlist"}", state.error.orEmpty(), action = { PillButton("Try again", state::load) }) }
@@ -570,6 +602,83 @@ fun PublicCollectionScreen(
                     LazyColumn(contentPadding = contentPadding.withTop(top)) {
                         // Hero Header Card
                         item(key = "hero") {
+                            if (isTv) {
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 24.dp, vertical = 14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(20.dp),
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(144.dp)
+                                            .clip(RoundedCornerShape(20.dp))
+                                    ) {
+                                        Thumbnail(details.collection.thumbnail, Modifier.fillMaxSize(), radius = 0)
+                                    }
+                                    Column(Modifier.weight(1f)) {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(c.primaryContainer)
+                                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                                        ) {
+                                            Text(
+                                                text = if (details.collection.isAlbum) "ALBUM" else "PLAYLIST",
+                                                color = c.onPrimaryContainer,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                letterSpacing = 1.sp,
+                                            )
+                                        }
+                                        Spacer(Modifier.height(8.dp))
+                                        Text(
+                                            details.collection.title,
+                                            fontFamily = RoundedHeavy,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 22.sp,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                            color = c.onSurface,
+                                        )
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(
+                                            details.collection.subtitle,
+                                            color = c.onSurfaceVariant,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                        Spacer(Modifier.height(14.dp))
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            PillButton(
+                                                "Play all",
+                                                onClick = {
+                                                    if (details.videos.isNotEmpty()) {
+                                                        onOpenPlaylist?.invoke(details.videos, 0) ?: onOpen(details.videos.first())
+                                                    }
+                                                },
+                                                icon = Icons.Rounded.PlayArrow,
+                                            )
+                                            CircleAction(
+                                                icon = Icons.Rounded.Shuffle,
+                                                contentDescription = "Shuffle",
+                                                onClick = {
+                                                    if (details.videos.isNotEmpty()) {
+                                                        val shuffled = details.videos.shuffled()
+                                                        onOpenPlaylist?.invoke(shuffled, 0) ?: onOpen(shuffled.first())
+                                                    }
+                                                },
+                                            )
+                                        }
+                                    }
+                                }
+                            } else {
                             Column(
                                 Modifier
                                     .fillMaxWidth()
@@ -646,6 +755,7 @@ fun PublicCollectionScreen(
                                 }
                                 Spacer(Modifier.height(16.dp))
                             }
+                            }
                         }
 
                         // Track List Header
@@ -705,7 +815,7 @@ private fun CompactCollectionTrackRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .pressable(pressedScale = 0.99f, onLongClick = { menu(video) }, onClick = onClick)
+            .pressable(pressedScale = 0.99f, focusScale = 1.015f, focusShape = RoundedCornerShape(14.dp), onLongClick = { menu(video) }, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -765,6 +875,7 @@ fun CollectionOptionsSheet(collection: PublicCollection, onDismiss: () -> Unit) 
         containerColor = c.surfaceContainerHigh,
         shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
     ) {
+        Column(Modifier.fillMaxWidth().focusGroup()) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -799,6 +910,7 @@ fun CollectionOptionsSheet(collection: PublicCollection, onDismiss: () -> Unit) 
             onDismiss()
         }
         Spacer(Modifier.height(20.dp))
+        }
     }
 }
 
@@ -806,7 +918,7 @@ fun CollectionOptionsSheet(collection: PublicCollection, onDismiss: () -> Unit) 
 private fun CollectionAction(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, onClick: () -> Unit) {
     val c = MaterialTheme.colorScheme
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 22.dp, vertical = 14.dp),
+        Modifier.fillMaxWidth().pressable(pressedScale = 0.98f, focusScale = 1.015f, focusShape = RoundedCornerShape(12.dp), onClick = onClick).padding(horizontal = 22.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(icon, contentDescription = null, tint = c.onSurface, modifier = Modifier.size(22.dp))

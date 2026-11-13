@@ -15,6 +15,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,18 +27,24 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -68,6 +76,8 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
@@ -75,7 +85,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -107,8 +123,10 @@ import com.github.itube.MusicPlayerState
 import com.github.itube.LyricsLine
 import com.github.itube.R
 import com.github.itube.highQualityThumbnail
+import com.github.itube.pressable
 import com.github.itube.ui.components.WavySlider
 import com.github.itube.ui.components.shimmerBrush
+import com.github.itube.ui.tv.tvFocusRing
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -215,11 +233,13 @@ fun LyricsV2Screen(
         onDismiss()
     }
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black)
     ) {
+        val isTvLandscape = maxWidth > maxHeight && maxWidth >= 600.dp
+
         // Atmospheric artwork background blur (AirBeats 48dp blur)
         AsyncImage(
             model = track.thumbnailUrl?.highQualityThumbnail(),
@@ -238,26 +258,26 @@ fun LyricsV2Screen(
                 .background(Color.Black.copy(alpha = 0.45f))
         )
 
-        // Main Portrait Layout
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .windowInsetsPadding(WindowInsets.statusBars)
+                .focusGroup()
         ) {
             // ── 1. AirBeats Header ──
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 14.dp),
+                    .padding(horizontal = 24.dp, vertical = if (isTvLandscape) 8.dp else 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 // Down arrow button (left)
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .clickable { onDismiss() },
+                        .size(40.dp)
+                        .pressable(focusShape = CircleShape, focusScale = 1.08f) { onDismiss() }
+                        .clip(CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Image(
@@ -297,9 +317,9 @@ fun LyricsV2Screen(
                 // More options button (right)
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .clickable { showOptionsSheet = true },
+                        .size(40.dp)
+                        .pressable(focusShape = CircleShape, focusScale = 1.08f) { showOptionsSheet = true }
+                        .clip(CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Image(
@@ -311,235 +331,465 @@ fun LyricsV2Screen(
                 }
             }
 
-            // ── 2. AirBeats LyricsV2 Content Area ──
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                contentAlignment = Alignment.TopCenter
-            ) {
-                AirBeatsLyricsV2Content(
-                    lyrics = displayedLyrics,
-                    sliderPositionProvider = { sliderPosition },
-                    onSeek = { MusicPlayerState.seekTo(it) }
-                )
-            }
-
-            // ── 3. AirBeats Bottom Playback & Volume Controls ──
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp)
-                    .padding(bottom = 16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
+            if (isTvLandscape) {
                 val currentDisplayPos = sliderPosition ?: position
-
-                // AirBeats Wavy Seek Bar (SquigglySlider)
-                WavySlider(
-                    value = currentDisplayPos.toFloat().coerceIn(0f, duration.toFloat()),
-                    onValueChange = {
-                        sliderPosition = it.toLong().coerceIn(0L, duration)
-                    },
-                    onValueChangeFinished = {
-                        sliderPosition?.let { MusicPlayerState.seekTo(it) }
-                        sliderPosition = null
-                    },
-                    valueRange = 0f..duration.toFloat(),
-                    isPlaying = isPlaying,
-                    activeTrackColor = Color.White,
-                    inactiveTrackColor = Color.White.copy(alpha = 0.25f),
-                    thumbColor = Color.White,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Spacer(Modifier.height(4.dp))
-
-                // Time display row + Audio Quality Pill
                 Row(
                     modifier = Modifier
+                        .weight(1f)
                         .fillMaxWidth()
-                        .padding(horizontal = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                        .padding(horizontal = 24.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(24.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = formatTime(currentDisplayPos),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.7f)
-                    )
-
-                    // Audio Quality Badge Pill
-                    Box(
+                    // Left Pane: Artwork + Controls
+                    Column(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color.White.copy(alpha = 0.12f))
-                            .padding(horizontal = 10.dp, vertical = 4.dp),
-                        contentAlignment = Alignment.Center
+                            .weight(0.38f)
+                            .fillMaxHeight()
+                            .verticalScroll(rememberScrollState())
+                            .padding(bottom = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
                     ) {
+                        Box(
+                            modifier = Modifier
+                                .widthIn(max = 170.dp)
+                                .aspectRatio(1f)
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(Color.White.copy(alpha = 0.08f))
+                        ) {
+                            AsyncImage(
+                                model = track.thumbnailUrl?.highQualityThumbnail(),
+                                contentDescription = track.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+
+                        Spacer(Modifier.height(14.dp))
+
+                        WavySlider(
+                            value = currentDisplayPos.toFloat().coerceIn(0f, duration.toFloat()),
+                            onValueChange = {
+                                sliderPosition = it.toLong().coerceIn(0L, duration)
+                            },
+                            onValueChangeFinished = {
+                                sliderPosition?.let { MusicPlayerState.seekTo(it) }
+                                sliderPosition = null
+                            },
+                            valueRange = 0f..duration.toFloat(),
+                            isPlaying = isPlaying,
+                            activeTrackColor = Color.White,
+                            inactiveTrackColor = Color.White.copy(alpha = 0.25f),
+                            thumbColor = Color.White,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Spacer(Modifier.height(2.dp))
+
                         Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = formatTime(currentDisplayPos),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.White.copy(alpha = 0.7f)
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color.White.copy(alpha = 0.12f))
+                                    .padding(horizontal = 10.dp, vertical = 3.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "iMusic • 128k",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                                    color = Color.White.copy(alpha = 0.90f)
+                                )
+                            }
+                            Text(
+                                text = formatTime(duration),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.White.copy(alpha = 0.7f)
+                            )
+                        }
+
+                        Spacer(Modifier.height(12.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(
+                                onClick = { MusicPlayerState.toggleRepeat() },
+                                modifier = Modifier.size(42.dp).tvFocusRing(CircleShape, borderColor = Color.White)
+                            ) {
+                                Image(
+                                    painter = painterResource(
+                                        when (MusicPlayerState.repeatMode) {
+                                            Player.REPEAT_MODE_ONE -> R.drawable.repeat_one
+                                            Player.REPEAT_MODE_ALL -> R.drawable.repeat_on
+                                            else -> R.drawable.repeat
+                                        }
+                                    ),
+                                    contentDescription = "Repeat",
+                                    colorFilter = ColorFilter.tint(
+                                        if (MusicPlayerState.repeatMode == Player.REPEAT_MODE_OFF)
+                                            Color.White.copy(alpha = 0.40f)
+                                        else Color.White
+                                    ),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
+                            IconButton(
+                                onClick = { MusicPlayerState.skipPrevious() },
+                                modifier = Modifier.size(42.dp).tvFocusRing(CircleShape, borderColor = Color.White)
+                            ) {
+                                Image(
+                                    painter = painterResource(R.drawable.skip_previous),
+                                    contentDescription = "Previous",
+                                    colorFilter = ColorFilter.tint(Color.White),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+
+                            IconButton(
+                                onClick = { MusicPlayerState.togglePlayPause() },
+                                modifier = Modifier.size(54.dp).tvFocusRing(CircleShape, borderColor = Color.White)
+                            ) {
+                                if (isLoading && !isPlaying) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(34.dp),
+                                        color = Color.White,
+                                        strokeWidth = 3.dp
+                                    )
+                                } else {
+                                    Image(
+                                        painter = painterResource(if (isPlaying) R.drawable.pause else R.drawable.play),
+                                        contentDescription = if (isPlaying) "Pause" else "Play",
+                                        colorFilter = ColorFilter.tint(Color.White),
+                                        modifier = Modifier.size(34.dp)
+                                    )
+                                }
+                            }
+
+                            IconButton(
+                                onClick = { MusicPlayerState.skipNext() },
+                                modifier = Modifier.size(42.dp).tvFocusRing(CircleShape, borderColor = Color.White)
+                            ) {
+                                Image(
+                                    painter = painterResource(R.drawable.skip_next),
+                                    contentDescription = "Next",
+                                    colorFilter = ColorFilter.tint(Color.White),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+
+                            IconButton(
+                                onClick = { MusicPlayerState.toggleShuffle() },
+                                modifier = Modifier.size(42.dp).tvFocusRing(CircleShape, borderColor = Color.White)
+                            ) {
+                                Image(
+                                    painter = painterResource(
+                                        if (MusicPlayerState.shuffleEnabled) R.drawable.shuffle_on else R.drawable.shuffle
+                                    ),
+                                    contentDescription = "Shuffle",
+                                    colorFilter = ColorFilter.tint(
+                                        if (MusicPlayerState.shuffleEnabled) Color.White else Color.White.copy(alpha = 0.40f)
+                                    ),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(Modifier.height(12.dp))
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Image(
-                                painter = painterResource(R.drawable.graphic_eq),
-                                contentDescription = null,
-                                colorFilter = ColorFilter.tint(Color.White.copy(alpha = 0.85f)),
-                                modifier = Modifier.size(13.dp)
+                                painter = painterResource(R.drawable.volume_off),
+                                contentDescription = "Volume Off",
+                                colorFilter = ColorFilter.tint(Color.White.copy(alpha = 0.70f)),
+                                modifier = Modifier.size(18.dp)
                             )
-                            Text(
-                                text = "YouTube • 128k",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
-                                color = Color.White.copy(alpha = 0.90f)
+
+                            AirBeatsBigSeekBar(
+                                progressProvider = { MusicPlayerState.volume },
+                                onProgressChange = { MusicPlayerState.adjustVolume(it) },
+                                color = Color.White,
+                                background = Color.White.copy(alpha = 0.16f),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(22.dp)
+                                    .padding(horizontal = 12.dp)
+                            )
+
+                            Image(
+                                painter = painterResource(R.drawable.volume_up),
+                                contentDescription = "Volume Up",
+                                colorFilter = ColorFilter.tint(Color.White.copy(alpha = 0.70f)),
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                     }
 
-                    Text(
-                        text = formatTime(duration),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.7f)
+                    // Right Pane: Synchronized Lyrics
+                    Box(
+                        modifier = Modifier
+                            .weight(0.62f)
+                            .fillMaxHeight(),
+                        contentAlignment = Alignment.TopCenter
+                    ) {
+                        AirBeatsLyricsV2Content(
+                            lyrics = displayedLyrics,
+                            sliderPositionProvider = { sliderPosition },
+                            onSeek = { MusicPlayerState.seekTo(it) }
+                        )
+                    }
+                }
+            } else {
+                // ── 2. AirBeats LyricsV2 Content Area ──
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    contentAlignment = Alignment.TopCenter
+                ) {
+                    AirBeatsLyricsV2Content(
+                        lyrics = displayedLyrics,
+                        sliderPositionProvider = { sliderPosition },
+                        onSeek = { MusicPlayerState.seekTo(it) }
                     )
                 }
 
-                Spacer(Modifier.height(18.dp))
-
-                // Playback Control Buttons: Repeat, Previous, Play/Pause, Next, Shuffle
-                Row(
+                // ── 3. AirBeats Bottom Playback & Volume Controls ──
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(horizontal = 24.dp)
+                        .padding(bottom = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // Repeat Button
-                    IconButton(
-                        onClick = { MusicPlayerState.toggleRepeat() },
-                        modifier = Modifier.size(40.dp)
+                    val currentDisplayPos = sliderPosition ?: position
+
+                    // AirBeats Wavy Seek Bar (SquigglySlider)
+                    WavySlider(
+                        value = currentDisplayPos.toFloat().coerceIn(0f, duration.toFloat()),
+                        onValueChange = {
+                            sliderPosition = it.toLong().coerceIn(0L, duration)
+                        },
+                        onValueChangeFinished = {
+                            sliderPosition?.let { MusicPlayerState.seekTo(it) }
+                            sliderPosition = null
+                        },
+                        valueRange = 0f..duration.toFloat(),
+                        isPlaying = isPlaying,
+                        activeTrackColor = Color.White,
+                        inactiveTrackColor = Color.White.copy(alpha = 0.25f),
+                        thumbColor = Color.White,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(Modifier.height(4.dp))
+
+                    // Time display row + Audio Quality Pill
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Image(
-                            painter = painterResource(
-                                when (MusicPlayerState.repeatMode) {
-                                    Player.REPEAT_MODE_ONE -> R.drawable.repeat_one
-                                    Player.REPEAT_MODE_ALL -> R.drawable.repeat_on
-                                    else -> R.drawable.repeat
-                                }
-                            ),
-                            contentDescription = "Repeat",
-                            colorFilter = ColorFilter.tint(
-                                if (MusicPlayerState.repeatMode == Player.REPEAT_MODE_OFF)
-                                    Color.White.copy(alpha = 0.40f)
-                                else Color.White
-                            ),
-                            modifier = Modifier.size(20.dp)
+                        Text(
+                            text = formatTime(currentDisplayPos),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.7f)
+                        )
+
+                        // Audio Quality Badge Pill
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color.White.copy(alpha = 0.12f))
+                                .padding(horizontal = 10.dp, vertical = 4.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Image(
+                                    painter = painterResource(R.drawable.graphic_eq),
+                                    contentDescription = null,
+                                    colorFilter = ColorFilter.tint(Color.White.copy(alpha = 0.85f)),
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Text(
+                                    text = "YouTube • 128k",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                                    color = Color.White.copy(alpha = 0.90f)
+                                )
+                            }
+                        }
+
+                        Text(
+                            text = formatTime(duration),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.7f)
                         )
                     }
 
-                    // Previous Button
-                    IconButton(
-                        onClick = { MusicPlayerState.skipPrevious() },
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Image(
-                            painter = painterResource(R.drawable.skip_previous),
-                            contentDescription = "Previous",
-                            colorFilter = ColorFilter.tint(Color.White),
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
+                    Spacer(Modifier.height(18.dp))
 
-                    // Play/Pause Button (56dp prominent)
-                    IconButton(
-                        onClick = { MusicPlayerState.togglePlayPause() },
-                        modifier = Modifier.size(56.dp)
+                    // Playback Control Buttons: Repeat, Previous, Play/Pause, Next, Shuffle
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (isLoading && !isPlaying) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(36.dp),
-                                color = Color.White,
-                                strokeWidth = 3.dp
-                            )
-                        } else {
+                        // Repeat Button
+                        IconButton(
+                            onClick = { MusicPlayerState.toggleRepeat() },
+                            modifier = Modifier.size(40.dp).tvFocusRing(CircleShape, borderColor = Color.White)
+                        ) {
                             Image(
                                 painter = painterResource(
-                                    if (isPlaying) R.drawable.pause else R.drawable.play
+                                    when (MusicPlayerState.repeatMode) {
+                                        Player.REPEAT_MODE_ONE -> R.drawable.repeat_one
+                                        Player.REPEAT_MODE_ALL -> R.drawable.repeat_on
+                                        else -> R.drawable.repeat
+                                    }
                                 ),
-                                contentDescription = if (isPlaying) "Pause" else "Play",
+                                contentDescription = "Repeat",
+                                colorFilter = ColorFilter.tint(
+                                    if (MusicPlayerState.repeatMode == Player.REPEAT_MODE_OFF)
+                                        Color.White.copy(alpha = 0.40f)
+                                    else Color.White
+                                ),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        // Previous Button
+                        IconButton(
+                            onClick = { MusicPlayerState.skipPrevious() },
+                            modifier = Modifier.size(40.dp).tvFocusRing(CircleShape, borderColor = Color.White)
+                        ) {
+                            Image(
+                                painter = painterResource(R.drawable.skip_previous),
+                                contentDescription = "Previous",
                                 colorFilter = ColorFilter.tint(Color.White),
-                                modifier = Modifier.size(36.dp)
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+
+                        // Play/Pause Button (56dp prominent)
+                        IconButton(
+                            onClick = { MusicPlayerState.togglePlayPause() },
+                            modifier = Modifier.size(56.dp).tvFocusRing(CircleShape, borderColor = Color.White)
+                        ) {
+                            if (isLoading && !isPlaying) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(36.dp),
+                                    color = Color.White,
+                                    strokeWidth = 3.dp
+                                )
+                            } else {
+                                Image(
+                                    painter = painterResource(
+                                        if (isPlaying) R.drawable.pause else R.drawable.play
+                                    ),
+                                    contentDescription = if (isPlaying) "Pause" else "Play",
+                                    colorFilter = ColorFilter.tint(Color.White),
+                                    modifier = Modifier.size(36.dp)
+                                )
+                            }
+                        }
+
+                        // Next Button
+                        IconButton(
+                            onClick = { MusicPlayerState.skipNext() },
+                            modifier = Modifier.size(40.dp).tvFocusRing(CircleShape, borderColor = Color.White)
+                        ) {
+                            Image(
+                                painter = painterResource(R.drawable.skip_next),
+                                contentDescription = "Next",
+                                colorFilter = ColorFilter.tint(Color.White),
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+
+                        // Shuffle Button
+                        IconButton(
+                            onClick = { MusicPlayerState.toggleShuffle() },
+                            modifier = Modifier.size(40.dp).tvFocusRing(CircleShape, borderColor = Color.White)
+                        ) {
+                            Image(
+                                painter = painterResource(
+                                    if (MusicPlayerState.shuffleEnabled) R.drawable.shuffle_on else R.drawable.shuffle
+                                ),
+                                contentDescription = "Shuffle",
+                                colorFilter = ColorFilter.tint(
+                                    if (MusicPlayerState.shuffleEnabled) Color.White else Color.White.copy(alpha = 0.40f)
+                                ),
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
 
-                    // Next Button
-                    IconButton(
-                        onClick = { MusicPlayerState.skipNext() },
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Image(
-                            painter = painterResource(R.drawable.skip_next),
-                            contentDescription = "Next",
-                            colorFilter = ColorFilter.tint(Color.White),
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
+                    Spacer(Modifier.height(18.dp))
 
-                    // Shuffle Button
-                    IconButton(
-                        onClick = { MusicPlayerState.toggleShuffle() },
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Image(
-                            painter = painterResource(
-                                if (MusicPlayerState.shuffleEnabled) R.drawable.shuffle_on else R.drawable.shuffle
-                            ),
-                            contentDescription = "Shuffle",
-                            colorFilter = ColorFilter.tint(
-                                if (MusicPlayerState.shuffleEnabled) Color.White else Color.White.copy(alpha = 0.40f)
-                            ),
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-
-                Spacer(Modifier.height(18.dp))
-
-                // AirBeats BigSeekBar Volume Control Row
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Image(
-                        painter = painterResource(R.drawable.volume_off),
-                        contentDescription = "Volume Off",
-                        colorFilter = ColorFilter.tint(Color.White.copy(alpha = 0.70f)),
-                        modifier = Modifier.size(18.dp)
-                    )
-
-                    AirBeatsBigSeekBar(
-                        progressProvider = { MusicPlayerState.volume },
-                        onProgressChange = { MusicPlayerState.adjustVolume(it) },
-                        color = Color.White,
-                        background = Color.White.copy(alpha = 0.16f),
+                    // AirBeats BigSeekBar Volume Control Row
+                    Row(
                         modifier = Modifier
-                            .weight(1f)
-                            .height(20.dp)
-                            .padding(horizontal = 14.dp)
-                    )
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Image(
+                            painter = painterResource(R.drawable.volume_off),
+                            contentDescription = "Volume Off",
+                            colorFilter = ColorFilter.tint(Color.White.copy(alpha = 0.70f)),
+                            modifier = Modifier.size(18.dp)
+                        )
 
-                    Image(
-                        painter = painterResource(R.drawable.volume_up),
-                        contentDescription = "Volume Up",
-                        colorFilter = ColorFilter.tint(Color.White.copy(alpha = 0.70f)),
-                        modifier = Modifier.size(18.dp)
-                    )
+                        AirBeatsBigSeekBar(
+                            progressProvider = { MusicPlayerState.volume },
+                            onProgressChange = { MusicPlayerState.adjustVolume(it) },
+                            color = Color.White,
+                            background = Color.White.copy(alpha = 0.16f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(20.dp)
+                                .padding(horizontal = 14.dp)
+                        )
+
+                        Image(
+                            painter = painterResource(R.drawable.volume_up),
+                            contentDescription = "Volume Up",
+                            colorFilter = ColorFilter.tint(Color.White.copy(alpha = 0.70f)),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    Spacer(Modifier.height(6.dp))
                 }
-
-                Spacer(Modifier.height(6.dp))
             }
         }
 
@@ -794,13 +1044,14 @@ internal fun AirBeatsLyricsV2Content(
                             transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0.5f)
                             alpha = wordLineAlpha
                         }
+                        .tvFocusRing(RoundedCornerShape(8.dp), focusScale = 1.02f, borderColor = Color.White)
                         .background(
                             color = if (isSelected && isSelectionModeActive)
                                 MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
                             else Color.Transparent,
                             shape = RoundedCornerShape(8.dp)
                         )
-                        .padding(vertical = 4.dp)
+                        .padding(vertical = 4.dp, horizontal = 6.dp)
                         .combinedClickable(
                             enabled = true,
                             onClick = {
@@ -879,7 +1130,8 @@ internal fun AirBeatsLyricsV2Content(
                 },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 16.dp),
+                    .padding(bottom = 16.dp)
+                    .tvFocusRing(RoundedCornerShape(24.dp), borderColor = Color.White),
                 shape = RoundedCornerShape(24.dp),
                 colors = ButtonDefaults.filledTonalButtonColors(
                     containerColor = Color.White.copy(alpha = 0.20f),
@@ -905,11 +1157,11 @@ internal fun AirBeatsLyricsV2Content(
                     Box(
                         modifier = Modifier
                             .size(48.dp)
-                            .background(Color.Black.copy(alpha = 0.45f), shape = CircleShape)
-                            .clickable {
+                            .pressable(focusShape = CircleShape, focusScale = 1.08f) {
                                 isSelectionModeActive = false
                                 selectedIndices.clear()
-                            },
+                            }
+                            .background(Color.Black.copy(alpha = 0.45f), shape = CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Image(
@@ -922,11 +1174,11 @@ internal fun AirBeatsLyricsV2Content(
 
                     Row(
                         modifier = Modifier
-                            .background(
-                                color = if (selectedIndices.isNotEmpty()) Color.White.copy(alpha = 0.92f) else Color.White.copy(alpha = 0.5f),
-                                shape = RoundedCornerShape(24.dp)
-                            )
-                            .clickable(enabled = selectedIndices.isNotEmpty()) {
+                            .pressable(
+                                enabled = selectedIndices.isNotEmpty(),
+                                focusShape = RoundedCornerShape(24.dp),
+                                focusScale = 1.04f
+                            ) {
                                 if (selectedIndices.isNotEmpty()) {
                                     val sortedIndices = selectedIndices.sorted()
                                     val selectedText = sortedIndices
@@ -944,6 +1196,10 @@ internal fun AirBeatsLyricsV2Content(
                                     selectedIndices.clear()
                                 }
                             }
+                            .background(
+                                color = if (selectedIndices.isNotEmpty()) Color.White.copy(alpha = 0.92f) else Color.White.copy(alpha = 0.5f),
+                                shape = RoundedCornerShape(24.dp)
+                            )
                             .padding(horizontal = 24.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1239,11 +1495,28 @@ private fun AirBeatsBigSeekBar(
     color: Color = Color.White,
 ) {
     var width by remember { mutableFloatStateOf(0f) }
+    var isFocused by remember { mutableStateOf(false) }
 
     Canvas(
         modifier
             .fillMaxWidth()
             .height(20.dp)
+            .onFocusChanged { isFocused = it.isFocused }
+            .focusable()
+            .onPreviewKeyEvent { ev ->
+                if (ev.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                when (ev.key) {
+                    Key.DirectionLeft -> {
+                        onProgressChange((progressProvider() - 0.05f).coerceIn(0f, 1f))
+                        true
+                    }
+                    Key.DirectionRight -> {
+                        onProgressChange((progressProvider() + 0.05f).coerceIn(0f, 1f))
+                        true
+                    }
+                    else -> false
+                }
+            }
             .clip(RoundedCornerShape(16.dp))
             .onPlaced {
                 width = it.size.width.toFloat()
@@ -1260,6 +1533,13 @@ private fun AirBeatsBigSeekBar(
             color = color,
             size = size.copy(width = size.width * progressProvider().coerceIn(0f, 1f)),
         )
+        if (isFocused) {
+            drawRoundRect(
+                color = Color.White,
+                cornerRadius = CornerRadius(16.dp.toPx()),
+                style = Stroke(width = 2.5.dp.toPx()),
+            )
+        }
     }
 }
 
@@ -1308,8 +1588,8 @@ private fun LyricsActionRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .pressable(focusShape = RoundedCornerShape(16.dp), focusScale = 1.015f, onClick = onClick)
             .clip(RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick)
             .padding(vertical = 13.dp, horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1348,8 +1628,8 @@ private fun LyricsEditorSheet(
                 minLines = 8,
             )
             Row(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 14.dp), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = onDismiss) { Text("Cancel") }
-                TextButton(onClick = { onSave(text) }) { Text("Save") }
+                TextButton(onClick = onDismiss, modifier = Modifier.tvFocusRing(CircleShape)) { Text("Cancel") }
+                TextButton(onClick = { onSave(text) }, modifier = Modifier.tvFocusRing(CircleShape)) { Text("Save") }
             }
         }
     }

@@ -3,7 +3,7 @@ package com.github.itube.ui.player
 import com.github.itube.R
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -60,6 +61,7 @@ import com.github.itube.MusicPlayerState
 import com.github.itube.MusicTrack
 import com.github.itube.highQualityThumbnail
 import com.github.itube.ui.components.AnimatedEqualizer
+import com.github.itube.ui.tv.tvFocusRing
 
 /**
  * Music Queue Pop-up Sheet.
@@ -102,6 +104,7 @@ fun MusicQueueSheet(
         Column(
             modifier = modifier
                 .fillMaxWidth()
+                .focusGroup()
                 .windowInsetsPadding(WindowInsets.navigationBars)
                 .padding(horizontal = 20.dp, vertical = 6.dp)
         ) {
@@ -132,7 +135,7 @@ fun MusicQueueSheet(
                             onClick = { MusicPlayerState.clearQueue() },
                             shape = CircleShape,
                             color = MaterialTheme.colorScheme.surfaceVariant,
-                            modifier = Modifier.size(36.dp)
+                            modifier = Modifier.size(36.dp).tvFocusRing(CircleShape)
                         ) {
                             Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                                 Icon(
@@ -149,7 +152,7 @@ fun MusicQueueSheet(
                         onClick = onDismiss,
                         shape = CircleShape,
                         color = MaterialTheme.colorScheme.surfaceVariant,
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier.size(36.dp).tvFocusRing(CircleShape)
                     ) {
                         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                             Icon(
@@ -228,7 +231,8 @@ fun MusicQueueSheet(
                         }
 
                         IconButton(
-                            onClick = { MusicPlayerState.togglePlayPause() }
+                            onClick = { MusicPlayerState.togglePlayPause() },
+                            modifier = Modifier.tvFocusRing(CircleShape)
                         ) {
                             Icon(
                                 imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
@@ -285,7 +289,7 @@ fun MusicQueueSheet(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(380.dp),
+                    .heightIn(max = 320.dp),
                 contentPadding = PaddingValues(bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -385,7 +389,7 @@ private fun QueueModeButton(
         onClick = onClick,
         shape = RoundedCornerShape(14.dp),
         color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
-        modifier = modifier,
+        modifier = modifier.tvFocusRing(RoundedCornerShape(14.dp)),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 11.dp),
@@ -416,7 +420,7 @@ private fun QueueItemRow(
         onClick = onClick,
         shape = RoundedCornerShape(12.dp),
         color = Color.Transparent,
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth().tvFocusRing(RoundedCornerShape(12.dp), focusScale = 1.015f)
     ) {
         Row(
             modifier = Modifier
@@ -460,7 +464,7 @@ private fun QueueItemRow(
                 )
             }
 
-            IconButton(onClick = onRemove) {
+            IconButton(onClick = onRemove, modifier = Modifier.tvFocusRing(CircleShape)) {
                 Icon(
                     imageVector = Icons.Rounded.Close,
                     contentDescription = "Remove",

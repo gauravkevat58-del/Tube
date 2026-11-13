@@ -4,6 +4,7 @@ import android.view.accessibility.CaptioningManager
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -77,7 +78,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -85,6 +92,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import com.github.itube.ui.tv.tvFocusRing
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
@@ -346,10 +354,16 @@ fun CaptionsSheet(state: PlayerState, onDismiss: () -> Unit, onTranscript: () ->
         containerColor = popupContainerColor(c.surfaceContainerLow),
         scrimColor = popupScrimColor(),
     ) {
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
+        Column(Modifier.focusGroup().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
             Row(Modifier.padding(start = 4.dp, end = 4.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Captions", fontFamily = RoundedHeavy, fontWeight = FontWeight.ExtraBold, fontSize = 21.sp, modifier = Modifier.weight(1f))
-                Switch(cap.on, onCheckedChange = cap::turn, enabled = cap.choice != null, colors = SwitchDefaults.colors(checkedTrackColor = c.primary))
+                Switch(
+                    checked = cap.on,
+                    onCheckedChange = cap::turn,
+                    enabled = cap.choice != null,
+                    modifier = Modifier.tvFocusRing(CircleShape, focusScale = 1.08f),
+                    colors = SwitchDefaults.colors(checkedTrackColor = c.primary),
+                )
             }
             if (cap.tracks.isEmpty()) {
                 Text("This video has no captions.", color = c.onSurfaceVariant, fontSize = 14.sp, modifier = Modifier.padding(4.dp))
@@ -367,7 +381,7 @@ fun CaptionsSheet(state: PlayerState, onDismiss: () -> Unit, onTranscript: () ->
             if (cap.tracks.isNotEmpty()) {
                 Spacer(Modifier.height(10.dp))
                 Row(
-                    Modifier.fillMaxWidth().height(48.dp).pressable(onClick = onTranscript).clip(CircleShape).background(c.surfaceContainerHigh),
+                    Modifier.fillMaxWidth().height(48.dp).pressable(focusShape = CircleShape, onClick = onTranscript).clip(CircleShape).background(c.surfaceContainerHigh),
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -388,7 +402,7 @@ private fun CaptionSheetRow(title: String, note: String?, selected: Boolean, onC
         Modifier
             .fillMaxWidth()
             .height(50.dp)
-            .pressable(pressedScale = 0.97f, onClick = onClick)
+            .pressable(pressedScale = 0.97f, focusScale = 1.015f, focusShape = CircleShape, onClick = onClick)
             .clip(CircleShape)
             .background(if (selected) c.primary else c.primary.copy(alpha = 0f))
             .padding(horizontal = 16.dp),
@@ -463,7 +477,14 @@ private fun TranscriptSearch(query: String, onChange: (String) -> Unit) {
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     Row(
-        Modifier.padding(horizontal = 16.dp, vertical = 6.dp).fillMaxWidth().height(46.dp).clip(CircleShape).background(c.surfaceContainerHigh).padding(start = 16.dp, end = 6.dp),
+        Modifier
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .fillMaxWidth()
+            .height(46.dp)
+            .tvFocusRing(CircleShape, focusScale = 1.015f)
+            .clip(CircleShape)
+            .background(c.surfaceContainerHigh)
+            .padding(start = 16.dp, end = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(Icons.Rounded.Search, null, tint = c.onSurfaceVariant, modifier = Modifier.size(20.dp))
@@ -479,11 +500,24 @@ private fun TranscriptSearch(query: String, onChange: (String) -> Unit) {
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 // Rule 4: Search closes the keyboard.
                 keyboardActions = KeyboardActions(onSearch = { keyboard?.hide(); focus.clearFocus() }),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onPreviewKeyEvent { e ->
+                        if (e.type == KeyEventType.KeyDown) when (e.key) {
+                            Key.DirectionUp -> focus.moveFocus(FocusDirection.Up)
+                            Key.DirectionDown -> focus.moveFocus(FocusDirection.Down)
+                            Key.Enter, Key.NumPadEnter -> {
+                                keyboard?.hide()
+                                focus.clearFocus()
+                                true
+                            }
+                            else -> false
+                        } else false
+                    },
             )
         }
         if (query.isNotEmpty()) {
-            Box(Modifier.size(36.dp).pressable { onChange("") }, contentAlignment = Alignment.Center) {
+            Box(Modifier.size(36.dp).pressable(focusShape = CircleShape) { onChange("") }, contentAlignment = Alignment.Center) {
                 Icon(Icons.Rounded.Close, "Clear search", tint = c.onSurfaceVariant, modifier = Modifier.size(18.dp))
             }
         }
@@ -540,7 +574,7 @@ private fun TranscriptList(state: PlayerState, cues: List<CaptionCue>, query: St
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 22.dp)
                     .graphicsLayer { alpha = pill; translationY = (1f - pill) * 16.dp.toPx() }
-                    .pressable { following = true }
+                    .pressable(focusShape = CircleShape) { following = true }
                     .clip(CircleShape)
                     .background(c.primary)
                     .padding(horizontal = 16.dp, vertical = 11.dp),
@@ -563,7 +597,7 @@ private fun TranscriptRow(cue: CaptionCue, playing: Boolean, past: Boolean, now:
     Row(
         Modifier
             .fillMaxWidth()
-            .pressable(pressedScale = 0.98f, onClick = onClick)
+            .pressable(pressedScale = 0.98f, focusScale = 1.015f, focusShape = RoundedCornerShape(18.dp), onClick = onClick)
             .clip(RoundedCornerShape(18.dp))
             .background(if (playing) c.surfaceContainerHigh else c.surfaceContainerHigh.copy(alpha = 0f))
             .padding(horizontal = 12.dp, vertical = 10.dp),
@@ -666,7 +700,7 @@ fun CaptionSettingsCard() {
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(CaptionNames.language(lang), color = c.onSurfaceVariant, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, softWrap = false)
-                        Box(Modifier.size(34.dp).pressable { CaptionTranslator.delete(lang) }, contentAlignment = Alignment.Center) {
+                        Box(Modifier.size(34.dp).pressable(focusShape = CircleShape) { CaptionTranslator.delete(lang) }, contentAlignment = Alignment.Center) {
                             Icon(Icons.Rounded.Close, "Remove ${CaptionNames.language(lang)}", tint = c.onSurfaceVariant, modifier = Modifier.size(16.dp))
                         }
                     }
@@ -688,10 +722,11 @@ private fun <T> SettingChips(options: List<Pair<T, String>>, selected: T, onPick
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         options.forEach { (value, label) ->
             val on = value == selected
+            val chipShape = RoundedCornerShape(if (on) 18.dp else 10.dp)
             Box(
                 Modifier
-                    .pressable { onPick(value) }
-                    .clip(RoundedCornerShape(if (on) 18.dp else 10.dp))
+                    .pressable(focusShape = chipShape) { onPick(value) }
+                    .clip(chipShape)
                     .background(if (on) c.secondaryContainer else c.surfaceContainerHighest)
                     .padding(horizontal = 16.dp, vertical = 9.dp),
             ) { Text(label, color = if (on) c.onSecondaryContainer else c.onSurfaceVariant, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, softWrap = false) }

@@ -66,6 +66,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -74,6 +84,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.itube.ui.components.MaterialLoader
+import com.github.itube.ui.tv.tvFocusRing
 import kotlinx.coroutines.launch
 
 /**
@@ -94,7 +105,7 @@ fun OnTheGoPill(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(
-            modifier = Modifier.pressable(pressedScale = 0.95f, onClick = onClick),
+            modifier = Modifier.pressable(pressedScale = 0.95f, focusShape = CircleShape, onClick = onClick),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
@@ -115,10 +126,10 @@ fun OnTheGoPill(
         Spacer(Modifier.width(7.dp))
         Box(
             modifier = Modifier
-                .size(18.dp)
+                .size(22.dp)
+                .pressable(focusShape = CircleShape, onClick = onDismiss)
                 .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.22f))
-                .clickable(onClick = onDismiss),
+                .background(Color.White.copy(alpha = 0.22f)),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
@@ -230,6 +241,7 @@ fun OnTheGoPanel(
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .height(with(density) { height.value.toDp() })
+                .focusGroup()
                 .graphicsLayer { translationY = slide.value * size.height }
                 .shadow(16.dp, shape, ambientColor = Color.Black.copy(alpha = 0.18f), spotColor = Color.Black.copy(alpha = 0.22f))
                 .clip(shape)
@@ -242,6 +254,7 @@ fun OnTheGoPanel(
                         }
                     }
                 }
+                .verticalScroll(rememberScrollState())
                 .imePadding()
                 .padding(bottom = navBottom.coerceAtLeast(8.dp)),
             verticalArrangement = Arrangement.SpaceBetween,
@@ -307,7 +320,7 @@ fun OnTheGoPanel(
                     }
                     IconButton(
                         onClick = { close() },
-                        modifier = Modifier.size(36.dp),
+                        modifier = Modifier.size(40.dp).tvFocusRing(CircleShape),
                     ) {
                         Icon(
                             Icons.Rounded.Close,
@@ -394,14 +407,32 @@ fun OnTheGoPanel(
                 // Custom themed seek bar
                 val trackColor = c.onSurface.copy(alpha = 0.18f)
                 val progressColor = c.primary
-                val thumbRadius = if (isDragging) 9.dp else 7.dp
+                var barFocused by remember { mutableStateOf(false) }
+                val thumbRadius = if (isDragging || barFocused) 9.dp else 7.dp
                 val thumbRadiusPx = with(LocalDensity.current) { thumbRadius.toPx() }
 
                 Box(
                     Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 20.dp)
-                        .height(28.dp)
+                        .height(32.dp)
+                        .tvFocusRing(RoundedCornerShape(16.dp), focusScale = 1.015f)
+                        .onFocusChanged { barFocused = it.isFocused }
+                        .focusable(enabled = state.durationMs > 0)
+                        .onPreviewKeyEvent { ev ->
+                            if (state.durationMs <= 0 || ev.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                            when (ev.key) {
+                                Key.DirectionLeft -> {
+                                    state.controller?.seekTo((state.positionMs - 10_000L).coerceAtLeast(0L))
+                                    true
+                                }
+                                Key.DirectionRight -> {
+                                    state.controller?.seekTo((state.positionMs + 10_000L).coerceAtMost(totalDuration))
+                                    true
+                                }
+                                else -> false
+                            }
+                        }
                         .pointerInput(totalDuration) {
                             detectHorizontalDragGestures(
                                 onDragStart = { isDragging = true },
@@ -472,7 +503,7 @@ fun OnTheGoPanel(
                 IconButton(
                     onClick = { state.playPrevious() },
                     enabled = hasPrevious,
-                    modifier = Modifier.size(48.dp),
+                    modifier = Modifier.size(48.dp).tvFocusRing(CircleShape),
                 ) {
                     Icon(
                         Icons.Rounded.SkipPrevious,
@@ -487,7 +518,7 @@ fun OnTheGoPanel(
                         val target = (state.positionMs - 10_000L).coerceAtLeast(0L)
                         state.controller?.seekTo(target)
                     },
-                    modifier = Modifier.size(48.dp),
+                    modifier = Modifier.size(48.dp).tvFocusRing(CircleShape),
                 ) {
                     Icon(
                         Icons.Rounded.Replay10,
@@ -500,9 +531,9 @@ fun OnTheGoPanel(
                 Box(
                     modifier = Modifier
                         .size(70.dp)
+                        .pressable(pressedScale = 0.93f, focusShape = CircleShape) { state.togglePlay() }
                         .clip(CircleShape)
-                        .background(playButtonBg)
-                        .pressable(pressedScale = 0.93f) { state.togglePlay() },
+                        .background(playButtonBg),
                     contentAlignment = Alignment.Center,
                 ) {
                     if (state.isBuffering || (state.loading && state.details == null)) {
@@ -523,7 +554,7 @@ fun OnTheGoPanel(
                         val target = (state.positionMs + 10_000L).coerceAtMost(maxTime)
                         state.controller?.seekTo(target)
                     },
-                    modifier = Modifier.size(48.dp),
+                    modifier = Modifier.size(48.dp).tvFocusRing(CircleShape),
                 ) {
                     Icon(
                         Icons.Rounded.Forward10,
@@ -536,7 +567,7 @@ fun OnTheGoPanel(
                 IconButton(
                     onClick = { state.playNextUp() },
                     enabled = hasNext,
-                    modifier = Modifier.size(48.dp),
+                    modifier = Modifier.size(48.dp).tvFocusRing(CircleShape),
                 ) {
                     Icon(
                         Icons.Rounded.SkipNext,
@@ -562,7 +593,7 @@ fun OnTheGoPanel(
                     onClick = {
                         if (onDownload != null) onDownload() else showDownload = true
                     },
-                    modifier = Modifier.size(48.dp),
+                    modifier = Modifier.size(48.dp).tvFocusRing(CircleShape),
                 ) {
                     Icon(Icons.Rounded.Download, contentDescription = "Download", tint = contentColor, modifier = Modifier.size(24.dp))
                 }
@@ -575,7 +606,7 @@ fun OnTheGoPanel(
                             height.animateTo(target, spring(dampingRatio = 0.86f, stiffness = 550f))
                         }
                     },
-                    modifier = Modifier.size(48.dp),
+                    modifier = Modifier.size(48.dp).tvFocusRing(CircleShape),
                 ) {
                     Icon(
                         if (isAudioMode) Icons.Rounded.SmartDisplay else Icons.Rounded.Headphones,
@@ -584,10 +615,10 @@ fun OnTheGoPanel(
                         modifier = Modifier.size(24.dp),
                     )
                 }
-                IconButton(onClick = { showSpeed = true }, modifier = Modifier.size(48.dp)) {
+                IconButton(onClick = { showSpeed = true }, modifier = Modifier.size(48.dp).tvFocusRing(CircleShape)) {
                     Icon(Icons.Rounded.Speed, contentDescription = "Speed", tint = contentColor, modifier = Modifier.size(24.dp))
                 }
-                IconButton(onClick = { showQueue = true }, modifier = Modifier.size(48.dp)) {
+                IconButton(onClick = { showQueue = true }, modifier = Modifier.size(48.dp).tvFocusRing(CircleShape)) {
                     Icon(Icons.Rounded.QueueMusic, contentDescription = "Queue", tint = contentColor, modifier = Modifier.size(24.dp))
                 }
             }

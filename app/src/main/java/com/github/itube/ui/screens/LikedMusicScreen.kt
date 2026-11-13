@@ -9,7 +9,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -78,6 +77,7 @@ import com.github.itube.MusicPlayerState
 import com.github.itube.highQualityThumbnail
 import com.github.itube.pressable
 import com.github.itube.ui.components.AnimatedEqualizer
+import com.github.itube.ui.tv.tvFocusRing
 
 /**
  * Dedicated Liked Songs screen.
@@ -128,7 +128,7 @@ fun LikedMusicScreen(
                     .padding(horizontal = 8.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onBack) {
+                IconButton(onClick = onBack, modifier = Modifier.tvFocusRing(CircleShape)) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
                         contentDescription = "Back",
@@ -154,10 +154,13 @@ fun LikedMusicScreen(
                 }
 
                 // Search toggle button
-                IconButton(onClick = {
-                    isSearchActive = !isSearchActive
-                    if (!isSearchActive) searchQuery = ""
-                }) {
+                IconButton(
+                    onClick = {
+                        isSearchActive = !isSearchActive
+                        if (!isSearchActive) searchQuery = ""
+                    },
+                    modifier = Modifier.tvFocusRing(CircleShape)
+                ) {
                     Icon(
                         imageVector = Icons.Rounded.Search,
                         contentDescription = "Search liked songs",
@@ -182,14 +185,15 @@ fun LikedMusicScreen(
                     },
                     trailingIcon = {
                         if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { searchQuery = "" }) {
+                            IconButton(onClick = { searchQuery = "" }, modifier = Modifier.tvFocusRing(CircleShape)) {
                                 Icon(Icons.Rounded.Clear, "Clear search", modifier = Modifier.size(18.dp))
                             }
                         }
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                        .tvFocusRing(RoundedCornerShape(16.dp)),
                     shape = RoundedCornerShape(16.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = c.primary,
@@ -263,7 +267,7 @@ fun LikedMusicScreen(
                                         onOpenMusic(likedList.first(), likedList.toList())
                                     }
                                 },
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.weight(1f).tvFocusRing(RoundedCornerShape(20.dp)),
                                 shape = RoundedCornerShape(20.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = c.primary,
@@ -282,7 +286,7 @@ fun LikedMusicScreen(
                                         onOpenMusic(shuffled.first(), shuffled)
                                     }
                                 },
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.weight(1f).tvFocusRing(RoundedCornerShape(20.dp)),
                                 shape = RoundedCornerShape(20.dp)
                             ) {
                                 Icon(Icons.Rounded.Shuffle, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -453,12 +457,14 @@ private fun LikedTrackRow(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(if (isPlayingThis) c.primaryContainer.copy(alpha = 0.35f) else Color.Transparent)
             .pressable(
+                focusShape = RoundedCornerShape(14.dp),
+                focusScale = 1.015f,
                 onLongClick = onLongClick,
                 onClick = onClick
             )
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (isPlayingThis) c.primaryContainer.copy(alpha = 0.35f) else Color.Transparent)
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -534,7 +540,7 @@ private fun LikedTrackRow(
         // 3-dot Overflow Menu Button
         IconButton(
             onClick = onMenuClick,
-            modifier = Modifier.size(36.dp)
+            modifier = Modifier.size(36.dp).tvFocusRing(CircleShape)
         ) {
             Icon(
                 imageVector = Icons.Rounded.MoreVert,
@@ -556,8 +562,8 @@ private fun LikedBottomSheetItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .pressable(focusShape = RoundedCornerShape(12.dp), focusScale = 1.015f, onClick = onClick)
             .clip(RoundedCornerShape(12.dp))
-            .pressable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

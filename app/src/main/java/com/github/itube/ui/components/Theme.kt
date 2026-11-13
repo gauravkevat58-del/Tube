@@ -454,7 +454,8 @@ object ThemeSettings {
     fun init(context: Context) {
         val p = context.getSharedPreferences("appearance", Context.MODE_PRIVATE).also { prefs = it }
         seed = p.getString("seed", null) ?: if (wallpaperAvailable) null else SEED_CREAM_ROSE
-        mode = p.getString("mode", "system") ?: "system"
+        val defaultMode = if (com.github.itube.ui.tv.TvHelper.isTvDevice(context)) "dark" else "system"
+        mode = p.getString("mode", null) ?: defaultMode
     }
 
     fun choose(seedHex: String?) {

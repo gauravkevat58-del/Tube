@@ -7,12 +7,15 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.graphicsLayer
+import com.github.itube.ui.tv.tvFocusRing
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -105,7 +108,7 @@ fun SignInScreen(onDone: () -> Unit, onCancel: () -> Unit) {
 
     Column(Modifier.fillMaxSize().background(c.surface).statusBarsPadding().navigationBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(44.dp).pressable(onClick = onCancel), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(44.dp).pressable(focusShape = CircleShape, onClick = onCancel), contentAlignment = Alignment.Center) {
                 Icon(Icons.Rounded.Close, "Cancel")
             }
             Spacer(Modifier.width(6.dp))
@@ -185,7 +188,7 @@ fun AccountAction(onClick: () -> Unit) {
     if (profile == null) {
         CircleAction(Icons.Rounded.AccountCircle, "Sign in", onClick)
     } else {
-        Box(Modifier.size(44.dp).pressable(onClick = onClick), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(48.dp).pressable(focusShape = CircleShape, onClick = onClick), contentAlignment = Alignment.Center) {
             ChannelAvatar(profile.avatar, profile.name, size = 40)
         }
     }
@@ -242,7 +245,7 @@ private fun AccountSettingsHome(
 ) {
     val c = MaterialTheme.colorScheme
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 32.dp),
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).focusGroup().padding(horizontal = 24.dp).padding(bottom = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         if (profile == null) {
@@ -283,7 +286,7 @@ private fun AccountSettingsHome(
 @Composable
 private fun SettingsEntry(iconVector: androidx.compose.ui.graphics.vector.ImageVector, title: String, summary: String, onClick: () -> Unit) {
     val c = MaterialTheme.colorScheme
-    Row(Modifier.fillMaxWidth().pressable(onClick = onClick).padding(vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().pressable(focusScale = 1.015f, focusShape = RoundedCornerShape(14.dp), onClick = onClick).padding(horizontal = 8.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(iconVector, null, tint = c.onSurface, modifier = Modifier.size(24.dp))
         Spacer(Modifier.width(16.dp))
         Column(Modifier.weight(1f)) {
@@ -296,7 +299,7 @@ private fun SettingsEntry(iconVector: androidx.compose.ui.graphics.vector.ImageV
 @Composable
 private fun SettingsEntry(icon: Int, title: String, summary: String, onClick: () -> Unit) {
     val c = MaterialTheme.colorScheme
-    Row(Modifier.fillMaxWidth().pressable(onClick = onClick).padding(vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().pressable(focusScale = 1.015f, focusShape = RoundedCornerShape(14.dp), onClick = onClick).padding(horizontal = 8.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(painterResource(icon), null, tint = c.onSurface, modifier = Modifier.size(24.dp))
         Spacer(Modifier.width(16.dp))
         Column(Modifier.weight(1f)) {
@@ -309,9 +312,9 @@ private fun SettingsEntry(icon: Int, title: String, summary: String, onClick: ()
 @Composable
 private fun SettingsDetailContent(detail: SettingsDetail, onBack: () -> Unit) {
     val c = MaterialTheme.colorScheme
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().focusGroup()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(44.dp).pressable { onBack() }, contentAlignment = Alignment.Center) {
+            Box(Modifier.size(44.dp).pressable(focusShape = CircleShape) { onBack() }, contentAlignment = Alignment.Center) {
                 Icon(Icons.Rounded.ArrowBack, "Back", tint = c.onSurface)
             }
             Text(detail.title, fontFamily = RoundedHeavy, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
@@ -493,9 +496,10 @@ private fun AboutITubeV2() {
         Text("Dev By DxV STUDIO", color = c.onSurfaceVariant, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 17.sp)
         Spacer(Modifier.height(14.dp))
         Row(
-            Modifier.clip(CircleShape).background(c.surfaceContainerHigh)
+            Modifier
+                .pressable(focusShape = CircleShape) { if (!checking) AppUpdate.checkNow() }
+                .clip(CircleShape).background(c.surfaceContainerHigh)
                 .border(1.dp, c.outlineVariant.copy(alpha = 0.55f), CircleShape)
-                .pressable { if (!checking) AppUpdate.checkNow() }
                 .padding(start = 15.dp, end = 17.dp, top = 10.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
@@ -516,7 +520,7 @@ private fun AboutITubeV2() {
             )
         }
         AppUpdate.lastCheckMessage?.let { Text(it, color = c.onSurfaceVariant, fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp)) }
-        release?.let { Text("View release notes", color = c.primary, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.pressable { showNotes = true }.padding(top = 9.dp)) }
+        release?.let { Text("View release notes", color = c.primary, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.pressable(focusShape = CircleShape) { showNotes = true }.padding(horizontal = 10.dp, vertical = 9.dp)) }
         Spacer(Modifier.height(12.dp))
         Text("Installed version notes", modifier = Modifier.fillMaxWidth(), fontFamily = RoundedHeavy, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
         Spacer(Modifier.height(6.dp))
@@ -552,7 +556,7 @@ private fun AboutITubeV2() {
             )
         }
         Spacer(Modifier.height(22.dp))
-        Text("GitHub · d0x-dev/iTube", color = c.primary, fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.pressable { uri.openUri("https://github.com/d0x-dev/iTube") })
+        Text("GitHub · d0x-dev/iTube", color = c.primary, fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.pressable(focusShape = CircleShape) { uri.openUri("https://github.com/d0x-dev/iTube") }.padding(horizontal = 12.dp, vertical = 6.dp))
     }
     if (showNotes && release != null) UpdateNotesSheet(release, onDismiss = { showNotes = false })
     if (showInstalledNotes && installedReleaseNotes != null) {
@@ -595,9 +599,9 @@ private fun AboutSocialBubble(
     Box(
         Modifier
             .size(38.dp)
+            .pressable(focusShape = CircleShape) { uri.openUri(url) }
             .clip(CircleShape)
-            .border(1.dp, c.outline.copy(alpha = 0.55f), CircleShape)
-            .pressable { uri.openUri(url) },
+            .border(1.dp, c.outline.copy(alpha = 0.55f), CircleShape),
         contentAlignment = Alignment.Center
     ) {
         Icon(
@@ -622,9 +626,11 @@ private fun FounderCardV2(
 ) {
     val c = MaterialTheme.colorScheme
     Column(
-        modifier.height(276.dp).clip(RoundedCornerShape(28.dp)).background(c.surfaceContainerHigh)
+        modifier.height(276.dp)
+            .pressable(focusScale = 1.02f, focusShape = RoundedCornerShape(28.dp)) { uri.openUri(githubUrl) }
+            .clip(RoundedCornerShape(28.dp)).background(c.surfaceContainerHigh)
             .border(1.dp, c.outlineVariant.copy(alpha = 0.65f), RoundedCornerShape(28.dp))
-            .pressable { uri.openUri(githubUrl) }.padding(vertical = 18.dp, horizontal = 8.dp),
+            .padding(vertical = 18.dp, horizontal = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         ChannelAvatar(avatarUrl, name, size = 86)
@@ -784,9 +790,9 @@ private fun StorageSettingsContent() {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .pressable(focusScale = 1.015f, focusShape = RoundedCornerShape(20.dp)) { MusicCacheManager.setCachingEnabled(!cachingEnabled) }
                 .clip(RoundedCornerShape(20.dp))
                 .background(c.surfaceContainerLow)
-                .pressable { MusicCacheManager.setCachingEnabled(!cachingEnabled) }
                 .padding(18.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -809,6 +815,7 @@ private fun StorageSettingsContent() {
             Switch(
                 checked = cachingEnabled,
                 onCheckedChange = { MusicCacheManager.setCachingEnabled(it) },
+                modifier = Modifier.focusProperties { canFocus = false },
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = c.primary,
                     checkedTrackColor = c.primaryContainer
@@ -820,9 +827,9 @@ private fun StorageSettingsContent() {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .pressable(focusScale = 1.015f, focusShape = RoundedCornerShape(20.dp)) { showLimitDialog = true }
                 .clip(RoundedCornerShape(20.dp))
                 .background(c.surfaceContainerLow)
-                .pressable { showLimitDialog = true }
                 .padding(18.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
@@ -855,7 +862,8 @@ private fun StorageSettingsContent() {
                 onClick = { showClearDialog = true },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp),
+                    .height(52.dp)
+                    .tvFocusRing(RoundedCornerShape(20.dp)),
                 shape = RoundedCornerShape(20.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = c.errorContainer,
@@ -880,16 +888,16 @@ private fun StorageSettingsContent() {
                 Text("Select storage limit", fontFamily = RoundedHeavy, fontWeight = FontWeight.Bold)
             },
             text = {
-                Column {
+                Column(Modifier.focusGroup()) {
                     limitOptions.forEach { (mb, label) ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .pressable {
+                                .pressable(focusScale = 1.015f, focusShape = RoundedCornerShape(12.dp)) {
                                     MusicCacheManager.setMaxCacheLimitMB(mb)
                                     showLimitDialog = false
                                 }
-                                .padding(vertical = 10.dp),
+                                .padding(horizontal = 6.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             RadioButton(
@@ -897,7 +905,8 @@ private fun StorageSettingsContent() {
                                 onClick = {
                                     MusicCacheManager.setMaxCacheLimitMB(mb)
                                     showLimitDialog = false
-                                }
+                                },
+                                modifier = Modifier.focusProperties { canFocus = false },
                             )
                             Spacer(Modifier.width(10.dp))
                             Text(
@@ -910,7 +919,10 @@ private fun StorageSettingsContent() {
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showLimitDialog = false }) { Text("Close") }
+                TextButton(
+                    onClick = { showLimitDialog = false },
+                    modifier = Modifier.tvFocusRing(CircleShape),
+                ) { Text("Close") }
             }
         )
     }
@@ -932,6 +944,7 @@ private fun StorageSettingsContent() {
                         showClearDialog = false
                         Toast.makeText(context, "Cached music cleared", Toast.LENGTH_SHORT).show()
                     },
+                    modifier = Modifier.tvFocusRing(CircleShape),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = c.error,
                         contentColor = c.onError
@@ -941,7 +954,10 @@ private fun StorageSettingsContent() {
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showClearDialog = false }) { Text("Cancel") }
+                TextButton(
+                    onClick = { showClearDialog = false },
+                    modifier = Modifier.tvFocusRing(CircleShape),
+                ) { Text("Cancel") }
             }
         )
     }

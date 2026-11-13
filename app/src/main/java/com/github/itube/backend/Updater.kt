@@ -559,7 +559,7 @@ fun UpdateAction() {
                 scaleX = 0.6f + 0.4f * v
                 scaleY = 0.6f + 0.4f * v
             }
-            .pressable { sheet = true }
+            .pressable(focusShape = CircleShape) { sheet = true }
             .height(44.dp)
             .widthIn(min = 104.dp)
             .clip(CircleShape)

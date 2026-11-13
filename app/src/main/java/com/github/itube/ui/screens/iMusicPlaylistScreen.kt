@@ -5,7 +5,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -62,6 +61,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -78,6 +78,7 @@ import com.github.itube.MusicPlaylistRef
 import com.github.itube.pressable
 import com.github.itube.ui.components.AnimatedEqualizer
 import com.github.itube.ui.components.MaterialLoader
+import com.github.itube.ui.tv.tvFocusRing
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -151,7 +152,7 @@ fun iMusicPlaylistScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBackClick) {
+                    IconButton(onClick = onBackClick, modifier = Modifier.tvFocusRing(CircleShape)) {
                         Icon(
                             Icons.AutoMirrored.Rounded.ArrowBack,
                             contentDescription = "Back",
@@ -160,24 +161,30 @@ fun iMusicPlaylistScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = {
-                        val shareUrl = if (isAlbum) "https://music.youtube.com/browse/$playlistId" else "https://music.youtube.com/playlist?list=$playlistId"
-                        val intent = Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, "$displayTitle - $shareUrl")
-                        }
-                        context.startActivity(Intent.createChooser(intent, "Share"))
-                    }) {
+                    IconButton(
+                        onClick = {
+                            val shareUrl = if (isAlbum) "https://music.youtube.com/browse/$playlistId" else "https://music.youtube.com/playlist?list=$playlistId"
+                            val intent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, "$displayTitle - $shareUrl")
+                            }
+                            context.startActivity(Intent.createChooser(intent, "Share"))
+                        },
+                        modifier = Modifier.tvFocusRing(CircleShape)
+                    ) {
                         Icon(Icons.Rounded.Share, contentDescription = "Share", tint = c.onBackground)
                     }
-                    IconButton(onClick = {
-                        albumOptionsFor = MusicPlaylistRef(
-                            id = playlistId,
-                            title = displayTitle,
-                            author = displayAuthor,
-                            thumbnailUrl = displayThumb
-                        )
-                    }) {
+                    IconButton(
+                        onClick = {
+                            albumOptionsFor = MusicPlaylistRef(
+                                id = playlistId,
+                                title = displayTitle,
+                                author = displayAuthor,
+                                thumbnailUrl = displayThumb
+                            )
+                        },
+                        modifier = Modifier.tvFocusRing(CircleShape)
+                    ) {
                         Icon(Icons.Rounded.MoreVert, contentDescription = "Options", tint = c.onBackground)
                     }
                 },
@@ -195,131 +202,228 @@ fun iMusicPlaylistScreen(
         ) {
             // Header: Cover artwork, Title, Author, Metadata, Buttons
             item(key = "header") {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp)
-                        .padding(top = 8.dp, bottom = 16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    // Artwork
-                    Box(
-                        modifier = Modifier
-                            .size(200.dp)
-                            .shadow(16.dp, RoundedCornerShape(20.dp), spotColor = Color.Black.copy(alpha = 0.25f))
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(c.surfaceContainerHigh),
-                    ) {
-                        AsyncImage(
-                            model = displayThumb,
-                            contentDescription = displayTitle,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
+                val cfg = LocalConfiguration.current
+                val isLandscape = cfg.screenWidthDp > cfg.screenHeightDp
+                val metaParts = mutableListOf<String>().apply {
+                    add(if (isAlbum) "Album" else "Playlist")
+                    if (tracks.isNotEmpty()) add("${tracks.size} songs")
+                    details?.year?.let { if (it.isNotBlank()) add(it) }
+                }
 
-                    Spacer(Modifier.height(20.dp))
-
-                    // Title
-                    Text(
-                        text = displayTitle,
-                        fontFamily = RoundedHeavy,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 22.sp,
-                        textAlign = TextAlign.Center,
-                        color = c.onBackground,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-
-                    Spacer(Modifier.height(6.dp))
-
-                    // Author
-                    if (displayAuthor.isNotBlank()) {
-                        Text(
-                            text = displayAuthor,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 15.sp,
-                            color = c.primary,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable {
-                                    val authorId = details?.authorId.orEmpty()
-                                    if (authorId.isNotBlank()) onArtistClick(authorId)
-                                }
-                                .padding(horizontal = 6.dp, vertical = 2.dp),
-                        )
-                    }
-
-                    // Metadata
-                    val metaParts = mutableListOf<String>()
-                    metaParts.add(if (isAlbum) "Album" else "Playlist")
-                    if (tracks.isNotEmpty()) metaParts.add("${tracks.size} songs")
-                    details?.year?.let { if (it.isNotBlank()) metaParts.add(it) }
-
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = metaParts.joinToString(" • "),
-                        fontSize = 13.sp,
-                        color = c.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                    )
-
-                    Spacer(Modifier.height(20.dp))
-
-                    // Action buttons: Play, Shuffle, Download, Bookmark
+                if (isLandscape) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(24.dp)
                     ) {
-                        // Play Button
-                        Button(
-                            onClick = {
-                                if (tracks.isNotEmpty()) onTrackClick(tracks.first(), tracks)
-                            },
-                            shape = CircleShape,
-                            colors = ButtonDefaults.buttonColors(containerColor = c.primary, contentColor = c.onPrimary),
-                            modifier = Modifier.height(44.dp),
+                        Box(
+                            modifier = Modifier
+                                .size(140.dp)
+                                .shadow(16.dp, RoundedCornerShape(20.dp), spotColor = Color.Black.copy(alpha = 0.25f))
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(c.surfaceContainerHigh),
                         ) {
-                            Icon(Icons.Rounded.PlayArrow, contentDescription = "Play", modifier = Modifier.size(20.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Play", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        }
-
-                        Spacer(Modifier.width(10.dp))
-
-                        // Shuffle Button
-                        FilledTonalButton(
-                            onClick = {
-                                if (tracks.isNotEmpty()) {
-                                    val shuffled = tracks.shuffled()
-                                    onTrackClick(shuffled.first(), shuffled)
-                                }
-                            },
-                            shape = CircleShape,
-                            modifier = Modifier.height(44.dp),
-                        ) {
-                            Icon(Icons.Rounded.Shuffle, contentDescription = "Shuffle", modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Shuffle", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                        }
-
-                        Spacer(Modifier.width(10.dp))
-
-                        // Bookmark Button
-                        FilledTonalIconButton(
-                            onClick = { isBookmarked = !isBookmarked },
-                            shape = CircleShape,
-                            modifier = Modifier.size(44.dp),
-                        ) {
-                            Icon(
-                                if (isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
-                                contentDescription = "Save",
-                                tint = if (isBookmarked) c.primary else c.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp),
+                            AsyncImage(
+                                model = displayThumb,
+                                contentDescription = displayTitle,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize(),
                             )
+                        }
+
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            horizontalAlignment = Alignment.Start
+                        ) {
+                            Text(
+                                text = displayTitle,
+                                fontFamily = RoundedHeavy,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 24.sp,
+                                color = c.onBackground,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            if (displayAuthor.isNotBlank()) {
+                                Text(
+                                    text = displayAuthor,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 15.sp,
+                                    color = c.primary,
+                                    modifier = Modifier
+                                        .pressable(focusShape = RoundedCornerShape(8.dp)) {
+                                            val authorId = details?.authorId.orEmpty()
+                                            if (authorId.isNotBlank()) onArtistClick(authorId)
+                                        }
+                                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                                )
+                            }
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = metaParts.joinToString(" • "),
+                                fontSize = 13.sp,
+                                color = c.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.height(14.dp))
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Button(
+                                    onClick = { if (tracks.isNotEmpty()) onTrackClick(tracks.first(), tracks) },
+                                    shape = CircleShape,
+                                    colors = ButtonDefaults.buttonColors(containerColor = c.primary, contentColor = c.onPrimary),
+                                    modifier = Modifier.height(44.dp).tvFocusRing(CircleShape),
+                                ) {
+                                    Icon(Icons.Rounded.PlayArrow, contentDescription = "Play", modifier = Modifier.size(20.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Play", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                }
+                                FilledTonalButton(
+                                    onClick = {
+                                        if (tracks.isNotEmpty()) {
+                                            val shuffled = tracks.shuffled()
+                                            onTrackClick(shuffled.first(), shuffled)
+                                        }
+                                    },
+                                    shape = CircleShape,
+                                    modifier = Modifier.height(44.dp).tvFocusRing(CircleShape),
+                                ) {
+                                    Icon(Icons.Rounded.Shuffle, contentDescription = "Shuffle", modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Shuffle", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                }
+                                FilledTonalIconButton(
+                                    onClick = { isBookmarked = !isBookmarked },
+                                    shape = CircleShape,
+                                    modifier = Modifier.size(44.dp).tvFocusRing(CircleShape),
+                                ) {
+                                    Icon(
+                                        if (isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
+                                        contentDescription = "Save",
+                                        tint = if (isBookmarked) c.primary else c.onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp)
+                            .padding(top = 8.dp, bottom = 16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(200.dp)
+                                .shadow(16.dp, RoundedCornerShape(20.dp), spotColor = Color.Black.copy(alpha = 0.25f))
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(c.surfaceContainerHigh),
+                        ) {
+                            AsyncImage(
+                                model = displayThumb,
+                                contentDescription = displayTitle,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+
+                        Spacer(Modifier.height(20.dp))
+
+                        Text(
+                            text = displayTitle,
+                            fontFamily = RoundedHeavy,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 22.sp,
+                            textAlign = TextAlign.Center,
+                            color = c.onBackground,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+
+                        Spacer(Modifier.height(6.dp))
+
+                        if (displayAuthor.isNotBlank()) {
+                            Text(
+                                text = displayAuthor,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 15.sp,
+                                color = c.primary,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier
+                                    .pressable(focusShape = RoundedCornerShape(8.dp)) {
+                                        val authorId = details?.authorId.orEmpty()
+                                        if (authorId.isNotBlank()) onArtistClick(authorId)
+                                    }
+                                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                            )
+                        }
+
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = metaParts.joinToString(" • "),
+                            fontSize = 13.sp,
+                            color = c.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                        )
+
+                        Spacer(Modifier.height(20.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Button(
+                                onClick = {
+                                    if (tracks.isNotEmpty()) onTrackClick(tracks.first(), tracks)
+                                },
+                                shape = CircleShape,
+                                colors = ButtonDefaults.buttonColors(containerColor = c.primary, contentColor = c.onPrimary),
+                                modifier = Modifier.height(44.dp).tvFocusRing(CircleShape),
+                            ) {
+                                Icon(Icons.Rounded.PlayArrow, contentDescription = "Play", modifier = Modifier.size(20.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Play", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            }
+
+                            Spacer(Modifier.width(10.dp))
+
+                            FilledTonalButton(
+                                onClick = {
+                                    if (tracks.isNotEmpty()) {
+                                        val shuffled = tracks.shuffled()
+                                        onTrackClick(shuffled.first(), shuffled)
+                                    }
+                                },
+                                shape = CircleShape,
+                                modifier = Modifier.height(44.dp).tvFocusRing(CircleShape),
+                            ) {
+                                Icon(Icons.Rounded.Shuffle, contentDescription = "Shuffle", modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Shuffle", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            }
+
+                            Spacer(Modifier.width(10.dp))
+
+                            FilledTonalIconButton(
+                                onClick = { isBookmarked = !isBookmarked },
+                                shape = CircleShape,
+                                modifier = Modifier.size(44.dp).tvFocusRing(CircleShape),
+                            ) {
+                                Icon(
+                                    if (isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
+                                    contentDescription = "Save",
+                                    tint = if (isBookmarked) c.primary else c.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
                         }
                     }
                 }
@@ -340,12 +444,14 @@ fun iMusicPlaylistScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 4.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (isPlayingThis) c.primaryContainer.copy(alpha = 0.35f) else Color.Transparent)
                             .pressable(
+                                focusShape = RoundedCornerShape(12.dp),
+                                focusScale = 1.015f,
                                 onLongClick = { trackOptionsFor = track },
                                 onClick = { onTrackClick(track, tracks) }
                             )
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (isPlayingThis) c.primaryContainer.copy(alpha = 0.35f) else Color.Transparent)
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -406,7 +512,7 @@ fun iMusicPlaylistScreen(
                         // Options
                         IconButton(
                             onClick = { trackOptionsFor = track },
-                            modifier = Modifier.size(36.dp),
+                            modifier = Modifier.size(36.dp).tvFocusRing(CircleShape),
                         ) {
                             Icon(
                                 Icons.Rounded.MoreVert,

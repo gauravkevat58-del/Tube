@@ -14,6 +14,7 @@ import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -26,6 +27,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -58,7 +60,7 @@ import com.github.itube.Account
 import com.github.itube.Tab
 
 val TvRailWidth = 76.dp
-val TvRailExpandedWidth = 200.dp
+val TvRailExpandedWidth = 204.dp
 
 @Composable
 fun TvNavRail(
@@ -81,14 +83,16 @@ fun TvNavRail(
             .fillMaxHeight()
             .width(railWidth)
             .shadow(if (railHasFocus) 24.dp else 8.dp)
-            .onFocusChanged { railHasFocus = it.hasFocus },
-        color = c.surfaceContainerLow.copy(alpha = 0.94f),
+            .onFocusChanged { railHasFocus = it.hasFocus }
+            .focusGroup(),
+        color = c.surfaceContainerLow.copy(alpha = 0.96f),
         shape = RoundedCornerShape(topEnd = 24.dp, bottomEnd = 24.dp),
         tonalElevation = 6.dp,
     ) {
         Column(
             modifier = Modifier
                 .fillMaxHeight()
+                .statusBarsPadding()
                 .padding(vertical = 18.dp, horizontal = 10.dp),
             horizontalAlignment = Alignment.Start,
             verticalArrangement = Arrangement.SpaceBetween,
@@ -175,7 +179,7 @@ fun TvNavRail(
                             else Color.Transparent
                         )
                         .then(
-                            if (isFocused) Modifier.border(2.dp, c.primary, RoundedCornerShape(14.dp))
+                            if (isFocused) Modifier.border(2.5.dp, c.primary, RoundedCornerShape(14.dp))
                             else Modifier
                         )
                         .clickable(

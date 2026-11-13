@@ -53,9 +53,9 @@ class OrientationController(private val activity: ComponentActivity) {
 
     var multiWindow by mutableStateOf(activity.isInMultiWindowMode)
         private set
-    /** Split screen: fullscreen chosen with the button; null follows the pane's shape. */
+    /** Split screen / forced landscape: fullscreen chosen with the button; null follows default. */
     private var paneFullscreen by mutableStateOf<Boolean?>(null)
-    /** Fullscreen in portrait, for a vertical video; dropped once the window turns landscape. */
+    /** Kept false so forced-landscape never flips to portrait. */
     private var portraitFullscreen by mutableStateOf(false)
 
     private val listener = object : OrientationEventListener(activity) {
@@ -64,8 +64,6 @@ class OrientationController(private val activity: ComponentActivity) {
             val physicallyLandscape = degrees in 60..120 || degrees in 240..300
             val physicallyPortrait = degrees <= 30 || degrees >= 330
             when {
-                // Only release a forced landscape when auto-rotate is on; with the rotation
-                // lock on, releasing would snap straight back to portrait.
                 forced == Forced.Landscape && physicallyLandscape && autoRotateOn() -> forced = null
                 forced == Forced.Portrait && physicallyPortrait -> forced = null
             }
@@ -78,26 +76,23 @@ class OrientationController(private val activity: ComponentActivity) {
     /** Whether the open player shows fullscreen; [landscape] is the window's (pane's) shape. */
     fun showsFullscreen(playerOpen: Boolean, landscape: Boolean): Boolean = when {
         !playerOpen -> false
-        // Audio only has no picture to fill the pane with.
-        multiWindow -> !AudioOnly.enabled && (paneFullscreen ?: landscape)
-        else -> landscape || (portraitFullscreen && !AudioOnly.enabled)
+        AudioOnly.enabled -> false
+        multiWindow -> paneFullscreen ?: landscape
+        paneFullscreen != null -> paneFullscreen == true
+        else -> landscape || portraitFullscreen
     }
 
-    /** [vertical]: the video is taller than wide, so fullscreen stays portrait. */
+    /** Enter fullscreen while keeping the app strictly in landscape. */
     fun enterFullscreen(vertical: Boolean) {
-        when {
-            multiWindow -> paneFullscreen = true
-            vertical -> portraitFullscreen = true
-            else -> forced = Forced.Landscape
-        }
+        portraitFullscreen = false
+        paneFullscreen = true
+        if (!multiWindow) forced = Forced.Landscape
     }
 
     fun exitFullscreen() {
-        when {
-            multiWindow -> paneFullscreen = false
-            portraitFullscreen -> portraitFullscreen = false
-            else -> forced = Forced.Portrait
-        }
+        portraitFullscreen = false
+        paneFullscreen = false
+        forced = null
     }
 
     fun setPlayerOpen(open: Boolean) {
@@ -108,19 +103,10 @@ class OrientationController(private val activity: ComponentActivity) {
 
     fun apply() {
         val isTv = com.github.itube.ui.tv.TvHelper.isTvDevice(activity)
-        activity.requestedOrientation = when {
-            isTv -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-            multiWindow -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-            !playerOpen -> {
-                if (activity.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) {
-                    ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-                } else {
-                    ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                }
-            }
-            forced == Forced.Landscape -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-            forced == Forced.Portrait -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            else -> ActivityInfo.SCREEN_ORIENTATION_USER
+        activity.requestedOrientation = if (isTv) {
+            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         }
     }
 
@@ -138,11 +124,10 @@ class OrientationController(private val activity: ComponentActivity) {
                 activity.removeOnMultiWindowModeChangedListener(windowListener)
             }
         }
-        // A pane that changes shape (the divider dragged) starts over from its new shape.
-        LaunchedEffect(landscape, multiWindow) {
+        // Only reset paneFullscreen on multi-window changes; keep explicit TV fullscreen toggle intact.
+        LaunchedEffect(multiWindow) {
             paneFullscreen = null
-            // Turned sideways: from here it's landscape fullscreen, which turning back exits.
-            if (landscape || multiWindow) portraitFullscreen = false
+            portraitFullscreen = false
         }
         LaunchedEffect(playerOpen, forced, multiWindow) { setPlayerOpen(playerOpen) }
     }

@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -87,6 +86,7 @@ import com.github.itube.pressable
 import com.github.itube.ui.components.AnimatedEqualizer
 import com.github.itube.ui.components.MaterialLoader
 import com.github.itube.ui.components.flowArtistShape
+import com.github.itube.ui.tv.tvFocusRing
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -132,9 +132,15 @@ fun iMusicArtistScreen(
         ?: artist?.bannerUrl?.takeIf { it.isNotBlank() }
         ?: initialThumbnail
 
-    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    val configuration = LocalConfiguration.current
+    val screenWidth = configuration.screenWidthDp.dp
+    val isLandscape = configuration.screenWidthDp > configuration.screenHeightDp
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val heroHeight = (screenWidth * 0.95f).coerceAtMost(380.dp) + statusBarHeight
+    val heroHeight = if (isLandscape) {
+        190.dp + statusBarHeight
+    } else {
+        (screenWidth * 0.95f).coerceAtMost(380.dp) + statusBarHeight
+    }
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val artistShape = flowArtistShape()
 
@@ -237,6 +243,7 @@ fun iMusicArtistScreen(
                         OutlinedButton(
                             onClick = { isSubscribed = !isSubscribed },
                             shape = CircleShape,
+                            modifier = Modifier.tvFocusRing(CircleShape),
                             colors = ButtonDefaults.outlinedButtonColors(
                                 containerColor = if (isSubscribed) c.secondaryContainer else Color.Transparent,
                                 contentColor = if (isSubscribed) c.onSecondaryContainer else c.onBackground,
@@ -269,7 +276,7 @@ fun iMusicArtistScreen(
                                     if (topTracks.isNotEmpty()) onTrackClick(topTracks.first(), topTracks)
                                 },
                                 shape = CircleShape,
-                                modifier = Modifier.size(40.dp),
+                                modifier = Modifier.size(40.dp).tvFocusRing(CircleShape),
                             ) {
                                 Icon(Icons.Rounded.Radio, contentDescription = "Radio", modifier = Modifier.size(20.dp))
                             }
@@ -283,7 +290,7 @@ fun iMusicArtistScreen(
                                     }
                                 },
                                 shape = CircleShape,
-                                modifier = Modifier.size(40.dp),
+                                modifier = Modifier.size(40.dp).tvFocusRing(CircleShape),
                             ) {
                                 Icon(Icons.Rounded.Shuffle, contentDescription = "Shuffle", modifier = Modifier.size(20.dp))
                             }
@@ -295,7 +302,7 @@ fun iMusicArtistScreen(
                                 },
                                 shape = CircleShape,
                                 colors = IconButtonDefaults.filledIconButtonColors(containerColor = c.primary, contentColor = c.onPrimary),
-                                modifier = Modifier.size(48.dp),
+                                modifier = Modifier.size(48.dp).tvFocusRing(CircleShape),
                             ) {
                                 Icon(
                                     Icons.Rounded.PlayArrow,
@@ -336,9 +343,10 @@ fun iMusicArtistScreen(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { isBioExpanded = !isBioExpanded }
                                 .padding(horizontal = 24.dp)
                                 .padding(bottom = 16.dp)
+                                .pressable(focusShape = RoundedCornerShape(10.dp), focusScale = 1.01f) { isBioExpanded = !isBioExpanded }
+                                .padding(4.dp)
                                 .animateContentSize(),
                         )
                     }
@@ -367,12 +375,14 @@ fun iMusicArtistScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 4.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (isPlayingThis) c.primaryContainer.copy(alpha = 0.35f) else Color.Transparent)
                             .pressable(
+                                focusShape = RoundedCornerShape(12.dp),
+                                focusScale = 1.015f,
                                 onLongClick = { trackOptionsFor = track },
                                 onClick = { onTrackClick(track, topTracks) }
                             )
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (isPlayingThis) c.primaryContainer.copy(alpha = 0.35f) else Color.Transparent)
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -433,7 +443,7 @@ fun iMusicArtistScreen(
                         // Options
                         IconButton(
                             onClick = { trackOptionsFor = track },
-                            modifier = Modifier.size(36.dp),
+                            modifier = Modifier.size(36.dp).tvFocusRing(CircleShape),
                         ) {
                             Icon(
                                 Icons.Rounded.MoreVert,
@@ -508,8 +518,9 @@ fun iMusicArtistScreen(
                             Column(
                                 modifier = Modifier
                                     .width(180.dp)
-                                    .clip(RoundedCornerShape(12.dp))
                                     .pressable(
+                                        focusShape = RoundedCornerShape(12.dp),
+                                        focusScale = 1.02f,
                                         onLongClick = { trackOptionsFor = video },
                                         onClick = { onTrackClick(video, videos) }
                                     ),
@@ -583,6 +594,8 @@ fun iMusicArtistScreen(
                                 modifier = Modifier
                                     .width(96.dp)
                                     .pressable(
+                                        focusShape = RoundedCornerShape(16.dp),
+                                        focusScale = 1.03f,
                                         onLongClick = {
                                             artistOptionsFor = MusicArtist(
                                                 id = relatedArtist.id,
@@ -642,6 +655,7 @@ fun iMusicArtistScreen(
                     onClick = onBackClick,
                     modifier = Modifier
                         .size(40.dp)
+                        .tvFocusRing(CircleShape)
                         .background(
                             if (topBarAlpha < 0.5f) Color.Black.copy(alpha = 0.35f) else Color.Transparent,
                             CircleShape
@@ -682,6 +696,7 @@ fun iMusicArtistScreen(
                         },
                         modifier = Modifier
                             .size(40.dp)
+                            .tvFocusRing(CircleShape)
                             .background(
                                 if (topBarAlpha < 0.5f) Color.Black.copy(alpha = 0.35f) else Color.Transparent,
                                 CircleShape
@@ -699,6 +714,7 @@ fun iMusicArtistScreen(
                         },
                         modifier = Modifier
                             .size(40.dp)
+                            .tvFocusRing(CircleShape)
                             .background(
                                 if (topBarAlpha < 0.5f) Color.Black.copy(alpha = 0.35f) else Color.Transparent,
                                 CircleShape
@@ -773,8 +789,7 @@ private fun PlaylistCard(
     Column(
         modifier = Modifier
             .width(136.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .pressable(onLongClick = onLongClick, onClick = onClick),
+            .pressable(focusShape = RoundedCornerShape(12.dp), focusScale = 1.02f, onLongClick = onLongClick, onClick = onClick),
     ) {
         Box(
             modifier = Modifier

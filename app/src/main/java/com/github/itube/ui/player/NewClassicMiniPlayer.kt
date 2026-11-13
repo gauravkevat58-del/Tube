@@ -32,10 +32,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
@@ -44,6 +47,9 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.foundation.focusGroup
+import com.github.itube.ui.tv.LocalIsTv
+import com.github.itube.ui.tv.tvFocusRing
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -176,6 +182,7 @@ fun NewClassicMiniPlayer(
             MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
         }
 
+        val isTv = LocalIsTv.current
         // Inner sliding container
         Surface(
             modifier = Modifier
@@ -187,6 +194,8 @@ fun NewClassicMiniPlayer(
                     color = miniPlayerBorderColor,
                     shape = RoundedCornerShape(33.dp)
                 )
+                .focusGroup()
+                .tvFocusRing(shape = RoundedCornerShape(33.dp), focusScale = 1.02f)
                 .clickable { onExpand() },
             shape = RoundedCornerShape(33.dp),
             color = miniPlayerBgColor,
@@ -256,7 +265,9 @@ fun NewClassicMiniPlayer(
                 val isLiked = track.liked
                 IconButton(
                     onClick = { MusicPlayerState.toggleLike() },
-                    modifier = Modifier.size(36.dp)
+                    modifier = Modifier
+                        .size(40.dp)
+                        .tvFocusRing(shape = CircleShape, focusScale = 1.08f)
                 ) {
                     val heartScale by animateFloatAsState(
                         targetValue = if (isLiked) 1.25f else 1f,
@@ -279,6 +290,22 @@ fun NewClassicMiniPlayer(
                     )
                 }
 
+                if (isTv) {
+                    IconButton(
+                        onClick = { MusicPlayerState.skipPrevious() },
+                        modifier = Modifier
+                            .size(40.dp)
+                            .tvFocusRing(shape = CircleShape, focusScale = 1.08f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.SkipPrevious,
+                            contentDescription = "Previous track",
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
+
                 Spacer(modifier = Modifier.width(4.dp))
 
                 // 4. AirBeats Play/Pause Button (Smooth rotating cookie shape)
@@ -286,6 +313,7 @@ fun NewClassicMiniPlayer(
                     onClick = { MusicPlayerState.togglePlayPause() },
                     modifier = Modifier
                         .size(46.dp)
+                        .tvFocusRing(shape = RoundedCornerShape(18.dp), focusScale = 1.08f)
                         .graphicsLayer {
                             rotationZ = cookieRotation.value
                         },
@@ -325,6 +353,35 @@ fun NewClassicMiniPlayer(
                                 tint = Color.White
                             )
                         }
+                    }
+                }
+
+                if (isTv) {
+                    IconButton(
+                        onClick = { MusicPlayerState.skipNext() },
+                        modifier = Modifier
+                            .size(40.dp)
+                            .tvFocusRing(shape = CircleShape, focusScale = 1.08f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.SkipNext,
+                            contentDescription = "Next track",
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    IconButton(
+                        onClick = { MusicPlayerState.close() },
+                        modifier = Modifier
+                            .size(40.dp)
+                            .tvFocusRing(shape = CircleShape, focusScale = 1.08f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Close,
+                            contentDescription = "Close mini player",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
                 }
             }

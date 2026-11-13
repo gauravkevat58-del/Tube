@@ -23,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
@@ -31,6 +32,8 @@ import kotlinx.coroutines.CancellationException
 import com.github.itube.ui.components.HomeScreenSkeleton
 import com.github.itube.ui.components.MaterialLoader
 import com.github.itube.ui.components.ModernPullToRefreshBox
+import com.github.itube.ui.tv.LocalIsTv
+import com.github.itube.ui.tv.tvGridColumns
 import kotlinx.coroutines.launch
 
 /** A pageable list of videos from the signed-in account (home, subscriptions, history, a playlist). */
@@ -297,7 +300,9 @@ fun FeedList(
         }
     }
     LaunchedEffect(nearEnd, feed.videos.size) { if (nearEnd && feed.videos.isNotEmpty()) feed.loadMore() }
-    val isTv = com.github.itube.ui.tv.LocalIsTv.current
+    val isTv = LocalIsTv.current
+    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    val gridCols = if (isTv) tvGridColumns(screenWidth, minColumnWidth = 280.dp, maxColumns = 3) else 1
     PullToRefresh(enabled = pullToRefresh, refreshing = feed.refreshing, onRefresh = feed::refresh, topPadding = indicatorTop) {
     LazyColumn(state = list, contentPadding = contentPadding) {
         header()
@@ -308,8 +313,8 @@ fun FeedList(
                 val limit = videoBatchSizes[batch % videoBatchSizes.size].coerceAtLeast(1)
                 val end = (offset + limit).coerceAtMost(displayVideos.size)
                 val group = displayVideos.subList(offset, end)
-                if (isTv) {
-                    val rows = group.chunked(2)
+                if (gridCols > 1) {
+                    val rows = group.chunked(gridCols)
                     items(rows, key = { it.first().id }) { row ->
                         androidx.compose.foundation.layout.Row(
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
@@ -320,7 +325,7 @@ fun FeedList(
                                     VideoCard(video, onClick = { onOpen(video) })
                                 }
                             }
-                            if (row.size < 2) {
+                            repeat(gridCols - row.size) {
                                 androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
                             }
                         }
@@ -334,8 +339,8 @@ fun FeedList(
                 if (group.size == limit) afterVideoBatch(this, batch++)
             }
         } else if (afterFirstVideo == null) {
-            if (isTv) {
-                val rows = displayVideos.chunked(2)
+            if (gridCols > 1) {
+                val rows = displayVideos.chunked(gridCols)
                 items(rows, key = { it.first().id }) { row ->
                     androidx.compose.foundation.layout.Row(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
@@ -346,7 +351,7 @@ fun FeedList(
                                 VideoCard(video, onClick = { onOpen(video) })
                             }
                         }
-                        if (row.size < 2) {
+                        repeat(gridCols - row.size) {
                             androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
                         }
                     }
@@ -359,8 +364,8 @@ fun FeedList(
                 item(key = first.id) { VideoCard(first, onClick = { onOpen(first) }) }
             }
             afterFirstVideo()
-            if (isTv) {
-                val rows = displayVideos.drop(1).chunked(2)
+            if (gridCols > 1) {
+                val rows = displayVideos.drop(1).chunked(gridCols)
                 items(rows, key = { it.first().id }) { row ->
                     androidx.compose.foundation.layout.Row(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
@@ -371,7 +376,7 @@ fun FeedList(
                                 VideoCard(video, onClick = { onOpen(video) })
                             }
                         }
-                        if (row.size < 2) {
+                        repeat(gridCols - row.size) {
                             androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
                         }
                     }

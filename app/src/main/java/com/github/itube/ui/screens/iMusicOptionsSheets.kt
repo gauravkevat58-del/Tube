@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -80,6 +81,7 @@ fun MusicTrackOptionsSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .focusGroup()
                 .verticalScroll(rememberScrollState())
                 .padding(bottom = 24.dp)
         ) {
@@ -311,6 +313,7 @@ fun MusicAlbumOptionsSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .focusGroup()
                 .verticalScroll(rememberScrollState())
                 .padding(bottom = 24.dp)
         ) {
@@ -516,6 +519,7 @@ fun MusicArtistOptionsSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .focusGroup()
                 .verticalScroll(rememberScrollState())
                 .padding(bottom = 24.dp)
         ) {
@@ -653,7 +657,7 @@ private fun SheetOptionRow(
         color = Color.Transparent,
         modifier = Modifier
             .fillMaxWidth()
-            .pressable(onClick = onClick)
+            .pressable(focusShape = RoundedCornerShape(14.dp), focusScale = 1.015f, onClick = onClick)
             .padding(horizontal = 20.dp, vertical = 10.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {

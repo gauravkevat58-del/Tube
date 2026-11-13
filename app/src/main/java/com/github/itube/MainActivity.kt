@@ -226,12 +226,34 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 android.view.KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
-                    PlayerState.activeInstance?.seekBy(10_000)
-                    return true
+                    val p = PlayerState.activeInstance
+                    if (p?.current != null) {
+                        p.seekBy(10_000)
+                        return true
+                    } else if (MusicPlayerState.currentTrack != null) {
+                        MusicPlayerState.seekTo((MusicPlayerState.positionMs + 10_000L).coerceAtMost(MusicPlayerState.durationMs))
+                        return true
+                    }
                 }
                 android.view.KeyEvent.KEYCODE_MEDIA_REWIND -> {
-                    PlayerState.activeInstance?.seekBy(-10_000)
-                    return true
+                    val p = PlayerState.activeInstance
+                    if (p?.current != null) {
+                        p.seekBy(-10_000)
+                        return true
+                    } else if (MusicPlayerState.currentTrack != null) {
+                        MusicPlayerState.seekTo((MusicPlayerState.positionMs - 10_000L).coerceAtLeast(0L))
+                        return true
+                    }
+                }
+                android.view.KeyEvent.KEYCODE_MEDIA_STOP -> {
+                    val p = PlayerState.activeInstance
+                    if (p?.current != null) {
+                        p.controller?.pause()
+                        return true
+                    } else if (MusicPlayerState.currentTrack != null) {
+                        MusicPlayerState.pause()
+                        return true
+                    }
                 }
                 android.view.KeyEvent.KEYCODE_MEDIA_NEXT -> {
                     val p = PlayerState.activeInstance
@@ -655,7 +677,7 @@ fun AirStreamApp() {
                     onSignIn = { signingIn = true }, onAccount = { accountSheet = true },
                     scrollToTop = scrollToTop[Tab.Subscriptions] ?: 0,
                 )
-                Tab.Shorts -> ShortsScreen(shorts, { shortsMorph.value }, overlayBottom = stackBottom + GlassHeight + 16.dp)
+                Tab.Shorts -> ShortsScreen(shorts, { shortsMorph.value }, overlayBottom = stackBottom + (if (isTv) 16.dp else GlassHeight + 16.dp))
                 Tab.Search -> SearchScreen(
                     state = search,
                     contentPadding = contentPadding,
@@ -843,22 +865,24 @@ fun AirStreamApp() {
             exit = if (reduced) fadeOut(snap()) else slideOutHorizontally(tween(300, easing = Motion.Emphasized)) { it } + fadeOut(tween(220)),
         ) {
             openMusicArtist?.let { artist ->
-                iMusicArtistScreen(
-                    channelId = artist.id,
-                    initialName = artist.name,
-                    initialThumbnail = artist.thumbnailUrl,
-                    onBackClick = { openMusicArtist = null },
-                    onTrackClick = { track, queue -> MusicPlayerState.play(track, queue) },
-                    onAlbumClick = { ref ->
-                        ListeningProfile.recordPlaylistOrAlbumView(ref)
-                        openMusicPlaylist = ref
-                    },
-                    onArtistClick = { nextArtistId ->
-                        val a = MusicArtist(id = nextArtistId, name = "")
-                        ListeningProfile.recordArtistView(a)
-                        openMusicArtist = a
-                    },
-                )
+                Box(Modifier.fillMaxSize().padding(start = if (isTv) com.github.itube.ui.tv.TvRailWidth else 0.dp)) {
+                    iMusicArtistScreen(
+                        channelId = artist.id,
+                        initialName = artist.name,
+                        initialThumbnail = artist.thumbnailUrl,
+                        onBackClick = { openMusicArtist = null },
+                        onTrackClick = { track, queue -> MusicPlayerState.play(track, queue) },
+                        onAlbumClick = { ref ->
+                            ListeningProfile.recordPlaylistOrAlbumView(ref)
+                            openMusicPlaylist = ref
+                        },
+                        onArtistClick = { nextArtistId ->
+                            val a = MusicArtist(id = nextArtistId, name = "")
+                            ListeningProfile.recordArtistView(a)
+                            openMusicArtist = a
+                        },
+                    )
+                }
             }
         }
 
@@ -868,20 +892,22 @@ fun AirStreamApp() {
             exit = if (reduced) fadeOut(snap()) else slideOutHorizontally(tween(300, easing = Motion.Emphasized)) { it } + fadeOut(tween(220)),
         ) {
             openMusicPlaylist?.let { pl ->
-                iMusicPlaylistScreen(
-                    playlistId = pl.id,
-                    initialTitle = pl.title,
-                    initialAuthor = pl.author,
-                    initialThumbnail = pl.thumbnailUrl,
-                    isAlbum = pl.isAlbum,
-                    onBackClick = { openMusicPlaylist = null },
-                    onTrackClick = { track, queue -> MusicPlayerState.play(track, queue) },
-                    onArtistClick = { artistId ->
-                        val a = MusicArtist(id = artistId, name = "")
-                        ListeningProfile.recordArtistView(a)
-                        openMusicArtist = a
-                    },
-                )
+                Box(Modifier.fillMaxSize().padding(start = if (isTv) com.github.itube.ui.tv.TvRailWidth else 0.dp)) {
+                    iMusicPlaylistScreen(
+                        playlistId = pl.id,
+                        initialTitle = pl.title,
+                        initialAuthor = pl.author,
+                        initialThumbnail = pl.thumbnailUrl,
+                        isAlbum = pl.isAlbum,
+                        onBackClick = { openMusicPlaylist = null },
+                        onTrackClick = { track, queue -> MusicPlayerState.play(track, queue) },
+                        onArtistClick = { artistId ->
+                            val a = MusicArtist(id = artistId, name = "")
+                            ListeningProfile.recordArtistView(a)
+                            openMusicArtist = a
+                        },
+                    )
+                }
             }
         }
 
@@ -890,16 +916,18 @@ fun AirStreamApp() {
             enter = if (reduced) fadeIn(snap()) else slideInHorizontally(tween(340, easing = Motion.Emphasized)) { it } + fadeIn(tween(120)),
             exit = if (reduced) fadeOut(snap()) else slideOutHorizontally(tween(300, easing = Motion.Emphasized)) { it } + fadeOut(tween(220)),
         ) {
-            iMusicMoodsAndGenresScreen(
-                onBackClick = { openMoodsAndGenres = false },
-                onMoodClick = { mood ->
-                    openMoodsAndGenres = false
-                    search.selectCategory(SearchCategory.Music)
-                    search.query = mood.title
-                    search.submit()
-                    tab = Tab.Search
-                },
-            )
+            Box(Modifier.fillMaxSize().padding(start = if (isTv) com.github.itube.ui.tv.TvRailWidth else 0.dp)) {
+                iMusicMoodsAndGenresScreen(
+                    onBackClick = { openMoodsAndGenres = false },
+                    onMoodClick = { mood ->
+                        openMoodsAndGenres = false
+                        search.selectCategory(SearchCategory.Music)
+                        search.query = mood.title
+                        search.submit()
+                        tab = Tab.Search
+                    },
+                )
+            }
         }
 
         AnimatedVisibility(
@@ -948,22 +976,23 @@ fun AirStreamApp() {
         BottomGestureGuard(Modifier.align(Alignment.BottomCenter))
 
         if (hasMini) {
+            val miniBottomPad = stackBottom + (if (isTv) 12.dp else NavHeight + MiniGap)
             val widthPx = rootConstraints.maxWidth.toFloat()
             val heightPx = rootConstraints.maxHeight.toFloat()
             val miniWidthPx = with(density) { minOf(rootMaxWidth - 32.dp, MiniWidth).toPx() }
             val miniHeightPx = miniWidthPx * 9f / 16f
             val baseLeft = widthPx - miniWidthPx - with(density) { 16.dp.toPx() }
-            val baseTop = heightPx - with(density) { (stackBottom + NavHeight + MiniGap).toPx() } - miniHeightPx
+            val baseTop = heightPx - with(density) { miniBottomPad.toPx() } - miniHeightPx
             val visibleHandlePx = with(density) { 30.dp.toPx() }
             val topLimitPx = with(density) { statusTop.toPx() }
-            val bottomLimitPx = heightPx - with(density) { (stackBottom + NavHeight + MiniGap).toPx() } - miniHeightPx
+            val bottomLimitPx = heightPx - with(density) { miniBottomPad.toPx() } - miniHeightPx
             MiniPlayer(
                 player,
                 onExpand = { player.expanded = true },
                 showVideo = !showPlayer && !showFullscreen,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 16.dp, bottom = stackBottom + NavHeight + MiniGap)
+                    .padding(end = 16.dp, bottom = miniBottomPad)
                     .widthIn(max = MiniWidth).aspectRatio(16f / 9f)
                     .offset { IntOffset(miniOffset.x.roundToInt(), miniOffset.y.roundToInt()) }
                     // A drag moves the tile. A tap remains a separate action that opens the
@@ -1005,16 +1034,17 @@ fun AirStreamApp() {
             tuckedEdge?.let { edge ->
                 val handleLeft = if (edge < 0) 0f else widthPx - visibleHandlePx
                 val handleTop = (baseTop + miniOffset.y).coerceIn(topLimitPx, bottomLimitPx)
+                val handleShape = if (edge < 0) RoundedCornerShape(topEnd = 14.dp, bottomEnd = 14.dp) else RoundedCornerShape(topStart = 14.dp, bottomStart = 14.dp)
                 Box(
                     Modifier
                         .offset { IntOffset(handleLeft.roundToInt(), handleTop.roundToInt()) }
                         .size(width = with(density) { visibleHandlePx.toDp() }, height = with(density) { miniHeightPx.toDp() })
-                        .clip(if (edge < 0) RoundedCornerShape(topEnd = 14.dp, bottomEnd = 14.dp) else RoundedCornerShape(topStart = 14.dp, bottomStart = 14.dp))
-                        .background(Color.Black.copy(alpha = 0.82f))
-                        .clickable {
+                        .pressable(focusShape = handleShape) {
                             miniOffset = Offset.Zero
                             tuckedEdge = null
-                        },
+                        }
+                        .clip(handleShape)
+                        .background(Color.Black.copy(alpha = 0.82f)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
@@ -1036,7 +1066,7 @@ fun AirStreamApp() {
                     onFullscreen = { toggleFullscreen() },
                     onPortraitFullscreen = { enterPortraitFullscreen() },
                     // With the controls on the video there's no bar over the player (it steps down below).
-                    bottomClearance = if (PlayerControls.inBar) stackBottom + NavHeight + PlayerBarRaise + 16.dp else stackBottom + 16.dp,
+                    bottomClearance = if (PlayerControls.inBar && !isTv) stackBottom + NavHeight + PlayerBarRaise + 16.dp else stackBottom + 16.dp,
                 )
         }
 
@@ -1062,7 +1092,7 @@ fun AirStreamApp() {
             )
         }
         // ── Dedicated Pop-up Based Music Player (AirBeats BottomSheet) ──
-        val musicMiniBottom = stackBottom + NavHeight + 8.dp
+        val musicMiniBottom = stackBottom + (if (isTv) 12.dp else NavHeight + 8.dp)
         val musicCollapsedBound = musicMiniBottom + 66.dp
         val musicExpandedBound = with(density) { rootConstraints.maxHeight.toDp() }
 
@@ -1111,13 +1141,14 @@ fun AirStreamApp() {
                 collapsedContent = {
                     Box(
                         modifier = Modifier
-                            .fillMaxSize(),
-                        contentAlignment = Alignment.BottomCenter
+                            .fillMaxSize()
+                            .padding(start = if (isTv) com.github.itube.ui.tv.TvRailWidth else 0.dp),
+                        contentAlignment = if (isTv) Alignment.BottomEnd else Alignment.BottomCenter
                     ) {
                         NewClassicMiniPlayer(
                             modifier = Modifier
                                 .padding(bottom = musicMiniBottom)
-                                .widthIn(max = NavWidth + 24.dp)
+                                .widthIn(max = if (isTv) 460.dp else NavWidth + 24.dp)
                                 .sheetDragGesture(musicSheetState) {
                                     MusicPlayerState.close()
                                 }
@@ -1226,7 +1257,11 @@ fun AirStreamApp() {
                 onHome = { tab = Tab.Home },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(start = 16.dp, end = 16.dp, bottom = stackBottom)
+                    .padding(
+                        start = if (isTv) com.github.itube.ui.tv.TvRailWidth + 16.dp else 16.dp,
+                        end = 16.dp,
+                        bottom = stackBottom + (if (isTv) 12.dp else 0.dp),
+                    )
                     .widthIn(max = NavWidth)
                     .fillMaxWidth()
                     .height(NavHeight)
@@ -1329,7 +1364,15 @@ fun AirStreamApp() {
         player.playlistTarget?.let { video -> SaveToPlaylistSheet(player, video, maxHeight = maxHeight - panelRestTop(player)) }
         // Confirmations ("Added to queue") when the full player isn't showing its own.
         if (!showPlayer) {
-            QueueMessage(player, Modifier.align(Alignment.BottomCenter).padding(bottom = stackBottom + NavHeight + (if (hasMini) MiniHeight + MiniGap else 0.dp) + 12.dp))
+            QueueMessage(
+                player,
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(
+                        start = if (isTv) com.github.itube.ui.tv.TvRailWidth else 0.dp,
+                        bottom = stackBottom + (if (isTv) 12.dp else NavHeight) + (if (hasMini) MiniHeight + MiniGap else 0.dp) + 12.dp,
+                    ),
+            )
         }
         // Picture-in-picture: the window is just the video, over everything (kept composed
         // underneath, so expanding returns to exactly where things were).

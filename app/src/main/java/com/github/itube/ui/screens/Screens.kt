@@ -6,7 +6,7 @@ import com.github.itube.ui.screens.MusicAlbumOptionsSheet
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusGroup
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayCircle
@@ -125,10 +125,15 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import android.view.inputmethod.InputMethodManager
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import com.github.itube.ui.tv.LocalIsTv
+import com.github.itube.ui.tv.tvFocusRing
+import com.github.itube.ui.tv.tvGridColumns
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -165,9 +170,16 @@ fun HomeScreen(
     val signedIn = Account.signedIn
     LaunchedEffect(signedIn) { if (signedIn) lib.home.ensureLoaded() }
     LaunchedEffect(Unit) { shorts.ensureFeed() }
+    val isTv = LocalIsTv.current
     CollapsingHeaderLayout(
         resetKey = scrollToTop to lib.home.generation,
-        header = { ScreenHeader(title = "iTube", brandMark = true) { UpdateAction(); AccountAction(onAccount) } },
+        header = {
+            ScreenHeader(title = "iTube", brandMark = true) {
+                if (isTv && signedIn) CircleAction(Icons.Rounded.Refresh, "Refresh") { lib.home.refresh() }
+                UpdateAction()
+                AccountAction(onAccount)
+            }
+        },
     ) { top ->
         if (signedIn) {
             FeedList(
@@ -215,11 +227,64 @@ private fun HomeShortsShelf(shorts: List<VideoItem>, shelfIndex: Int, onOpenShor
     val shelfShorts = shorts.drop(shelfIndex * 4).take(4)
     if (shelfShorts.isEmpty()) return
     val menu = LocalVideoMenu.current
+    val isTv = LocalIsTv.current
+    val cardShape = RoundedCornerShape(16.dp)
     Column(Modifier.padding(top = 4.dp, bottom = 6.dp)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("i", color = Color(0xFFFF0000), fontSize = 21.sp, fontWeight = FontWeight.ExtraBold)
             Text("Shorts", fontSize = 21.sp, fontWeight = FontWeight.ExtraBold)
         }
+        if (isTv) {
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                items(shelfShorts, key = { "home-short-${it.id}" }) { short ->
+                    val idx = shelfShorts.indexOf(short)
+                    Box(
+                        Modifier.width(154.dp)
+                            .aspectRatio(9f / 16f)
+                            .prefetchOnPress(short.id)
+                            .pressable(pressedScale = 0.98f, focusScale = 1.03f, focusShape = cardShape, onLongClick = { menu(short) }, onClick = { onOpenShort(short) })
+                            .clip(cardShape),
+                    ) {
+                        Thumbnail(
+                            url = short.shortThumbnail,
+                            modifier = Modifier.fillMaxSize(),
+                            radius = 0,
+                            fallbackUrl = short.thumbnail,
+                        )
+                        Box(
+                            Modifier.fillMaxSize().background(
+                                Brush.verticalGradient(0.42f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.78f)),
+                            ),
+                        )
+                        if (idx < 2) {
+                            Box(
+                                Modifier.align(Alignment.TopStart).padding(8.dp).clip(RoundedCornerShape(6.dp))
+                                    .background(Color.White).padding(horizontal = 8.dp, vertical = 3.dp),
+                            ) { Text("New", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
+                        }
+                        IconButton(
+                            onClick = { menu(short) },
+                            modifier = Modifier.align(Alignment.TopEnd).padding(2.dp).size(34.dp).tvFocusRing(CircleShape),
+                        ) {
+                            Icon(Icons.Rounded.MoreVert, contentDescription = "Short options", tint = Color.White, modifier = Modifier.size(19.dp))
+                        }
+                        Text(
+                            short.title,
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            lineHeight = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.align(Alignment.BottomStart).padding(horizontal = 10.dp, vertical = 11.dp),
+                        )
+                    }
+                }
+            }
+        } else {
         shelfShorts.chunked(2).forEachIndexed { rowIndex, rowShorts ->
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp),
@@ -230,8 +295,8 @@ private fun HomeShortsShelf(shorts: List<VideoItem>, shelfIndex: Int, onOpenShor
                         Modifier.weight(1f)
                             .aspectRatio(9f / 16f)
                             .prefetchOnPress(short.id)
-                            .pressable(pressedScale = 0.98f, onLongClick = { menu(short) }, onClick = { onOpenShort(short) })
-                            .clip(RoundedCornerShape(16.dp)),
+                            .pressable(pressedScale = 0.98f, focusScale = 1.03f, focusShape = cardShape, onLongClick = { menu(short) }, onClick = { onOpenShort(short) })
+                            .clip(cardShape),
                     ) {
                         Thumbnail(
                             url = short.shortThumbnail,
@@ -250,13 +315,12 @@ private fun HomeShortsShelf(shorts: List<VideoItem>, shelfIndex: Int, onOpenShor
                                     .background(Color.White).padding(horizontal = 8.dp, vertical = 3.dp),
                             ) { Text("New", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
                         }
-                        Icon(
-                            Icons.Rounded.MoreVert,
-                            contentDescription = "Short options",
-                            tint = Color.White,
-                            modifier = Modifier.align(Alignment.TopEnd).padding(7.dp).size(19.dp)
-                                .clickable { menu(short) },
-                        )
+                        IconButton(
+                            onClick = { menu(short) },
+                            modifier = Modifier.align(Alignment.TopEnd).padding(2.dp).size(34.dp).tvFocusRing(CircleShape),
+                        ) {
+                            Icon(Icons.Rounded.MoreVert, contentDescription = "Short options", tint = Color.White, modifier = Modifier.size(19.dp))
+                        }
                         Text(
                             short.title,
                             color = Color.White,
@@ -271,6 +335,7 @@ private fun HomeShortsShelf(shorts: List<VideoItem>, shelfIndex: Int, onOpenShor
                 }
                 if (rowShorts.size == 1) Spacer(Modifier.weight(1f))
             }
+        }
         }
     }
 }
@@ -289,7 +354,7 @@ private fun HomeCollectionsShelf(collections: List<PublicCollection>, onPlay: (P
             items(collections, key = { "home-collection-${it.url}" }) { collection ->
                 val isMix = collection.subtitle.contains("mix", ignoreCase = true) ||
                     collection.url.substringAfter("list=", "").startsWith("RD")
-                Column(Modifier.width(190.dp).pressable(pressedScale = 0.98f, onClick = { onPlay(collection) })) {
+                Column(Modifier.width(190.dp).pressable(pressedScale = 0.98f, focusScale = 1.03f, focusShape = RoundedCornerShape(18.dp), onClick = { onPlay(collection) })) {
                     Box(Modifier.fillMaxWidth().height(120.dp).clip(RoundedCornerShape(18.dp))) {
                         Thumbnail(collection.thumbnail, Modifier.fillMaxSize(), radius = 0)
                         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.25f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.78f))))
@@ -329,9 +394,15 @@ fun SubscriptionsScreen(
             if (lib.channels.isEmpty()) lib.loadChannels()
         }
     }
+    val isTv = LocalIsTv.current
     CollapsingHeaderLayout(
         resetKey = scrollToTop to lib.subscriptions.generation,
-        header = { ScreenHeader(title = "Subscriptions") { AccountAction(onAccount) } },
+        header = {
+            ScreenHeader(title = "Subscriptions") {
+                if (isTv && signedIn) CircleAction(Icons.Rounded.Refresh, "Refresh") { lib.subscriptions.refresh(); lib.loadChannels() }
+                AccountAction(onAccount)
+            }
+        },
     ) { top ->
         if (signedIn) {
             FeedList(lib.subscriptions, contentPadding.withTop(top), onOpen, header = {
@@ -366,8 +437,8 @@ private fun ChannelRail(channels: List<ChannelRef>) {
             Column(
                 Modifier
                     .width(64.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .pressable(pressedScale = 0.94f) { openChannel(ch.id) },
+                    .pressable(pressedScale = 0.94f, focusScale = 1.04f, focusShape = RoundedCornerShape(12.dp)) { openChannel(ch.id) }
+                    .clip(RoundedCornerShape(12.dp)),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 ChannelAvatar(ch.avatar, ch.name, size = 56)
@@ -401,9 +472,16 @@ fun LibraryScreen(
             if (lib.playlists.isEmpty()) lib.loadPlaylists()
         }
     }
+    val isTv = LocalIsTv.current
+    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     CollapsingHeaderLayout(
         resetKey = scrollToTop to lib.history.generation,
-        header = { ScreenHeader(title = "Library") { AccountAction(onAccount) } },
+        header = {
+            ScreenHeader(title = "Library") {
+                if (isTv && signedIn) CircleAction(Icons.Rounded.Refresh, "Refresh") { lib.history.refresh(); lib.loadPlaylists() }
+                AccountAction(onAccount)
+            }
+        },
     ) { top ->
         PullToRefresh(
             enabled = signedIn,
@@ -441,7 +519,7 @@ fun LibraryScreen(
                             color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp,
-                            modifier = Modifier.pressable(onClick = onOpenHistory).padding(4.dp),
+                            modifier = Modifier.pressable(focusShape = CircleShape, onClick = onOpenHistory).padding(horizontal = 8.dp, vertical = 4.dp),
                         )
                     }
                 }
@@ -475,6 +553,30 @@ fun LibraryScreen(
                 val cachedBytes = MusicCacheManager.totalStorageBytes.longValue
                 val cachedSizeStr = MusicCacheManager.formatStorageSize(cachedBytes)
                 val likedCount = LikedSongsStore.likedTracks.size
+                if (isTv) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        PlaylistTile(
+                            PlaylistRef("DL", "Downloads", null, "${DownloadLibrary.entries.size} videos"),
+                            Modifier.weight(1f),
+                            onOpenDownloads,
+                        )
+                        CachedSongsTile(
+                            title = "Cached songs",
+                            subtitle = "$cachedCount songs • $cachedSizeStr",
+                            modifier = Modifier.weight(1f),
+                            onClick = onOpenCachedMusic,
+                        )
+                        LikedSongsTile(
+                            title = "Liked songs",
+                            subtitle = "$likedCount songs",
+                            modifier = Modifier.weight(1f),
+                            onClick = onOpenLikedMusic,
+                        )
+                    }
+                } else {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
@@ -505,6 +607,7 @@ fun LibraryScreen(
                         Spacer(Modifier.weight(1f))
                     }
                 }
+                }
             }
             if (SavedCollections.items.isNotEmpty()) {
                 item(key = "savedCollectionsTitle") { SectionTitle("Saved collections") }
@@ -518,10 +621,11 @@ fun LibraryScreen(
                 PlaylistRef("WL", "Watch later", null, null),
                 PlaylistRef("LL", "Liked videos", null, null),
             )
-            items((pinned + lib.playlists).chunked(2), key = { row -> row.joinToString { it.id } }) { row ->
+            val plCols = if (isTv) tvGridColumns(screenWidth, 210.dp, 4) else 2
+            items((pinned + lib.playlists).chunked(plCols), key = { row -> row.joinToString { it.id } }) { row ->
                 Row(Modifier.padding(horizontal = 16.dp, vertical = 5.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     row.forEach { pl -> PlaylistTile(pl, Modifier.weight(1f)) { onOpenPlaylist(pl) } }
-                    if (row.size == 1) Spacer(Modifier.weight(1f))
+                    repeat(plCols - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
         }
@@ -532,7 +636,7 @@ fun LibraryScreen(
 @Composable
 private fun HistoryCard(video: VideoItem, onClick: () -> Unit) {
     val menu = LocalVideoMenu.current
-    Column(Modifier.width(168.dp).prefetchOnPress(video.id).pressable(pressedScale = 0.97f, onLongClick = { menu(video) }, onClick = onClick)) {
+    Column(Modifier.width(168.dp).prefetchOnPress(video.id).pressable(pressedScale = 0.97f, focusScale = 1.03f, focusShape = RoundedCornerShape(20.dp), onLongClick = { menu(video) }, onClick = onClick)) {
         Box {
             Thumbnail(video.thumbnail, Modifier.fillMaxWidth().aspectRatio(16f / 9f), radius = 20)
             DurationPill(video.durationSec, Modifier.align(Alignment.BottomEnd).padding(6.dp), small = true)
@@ -557,7 +661,7 @@ private fun PlaylistTile(playlist: PlaylistRef, modifier: Modifier, onClick: () 
     Column(
         modifier = modifier
             .height(132.dp)
-            .pressable(pressedScale = 0.97f, onLongClick = { if (canManage) openOptions(playlist) }, onClick = onClick)
+            .pressable(pressedScale = 0.97f, focusScale = 1.03f, focusShape = shape, onLongClick = { if (canManage) openOptions(playlist) }, onClick = onClick)
             .clip(shape)
             .background(c.surfaceContainerLow)
             .padding(14.dp),
@@ -584,7 +688,7 @@ private fun CachedSongsTile(title: String, subtitle: String, modifier: Modifier,
     Column(
         modifier = modifier
             .height(132.dp)
-            .pressable(pressedScale = 0.97f, onClick = onClick)
+            .pressable(pressedScale = 0.97f, focusScale = 1.03f, focusShape = shape, onClick = onClick)
             .clip(shape)
             .background(c.surfaceContainerLow)
             .padding(14.dp),
@@ -615,7 +719,7 @@ private fun LikedSongsTile(title: String, subtitle: String, modifier: Modifier, 
     Column(
         modifier = modifier
             .height(132.dp)
-            .pressable(pressedScale = 0.97f, onClick = onClick)
+            .pressable(pressedScale = 0.97f, focusScale = 1.03f, focusShape = shape, onClick = onClick)
             .clip(shape)
             .background(c.surfaceContainerLow)
             .padding(14.dp),
@@ -656,6 +760,7 @@ fun PlaylistOptionsSheet(
         containerColor = c.surfaceContainerHigh,
         shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
     ) {
+        Column(Modifier.fillMaxWidth().focusGroup()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(54.dp).clip(RoundedCornerShape(12.dp)).background(c.surfaceContainerHighest), contentAlignment = Alignment.Center) {
                 if (playlist.thumbnail != null) Thumbnail(playlist.thumbnail, Modifier.fillMaxSize(), radius = 0)
@@ -676,14 +781,15 @@ fun PlaylistOptionsSheet(
             PlaylistAction(Icons.Rounded.Delete, "Delete playlist", c.error) { confirmDelete = true }
         }
         Spacer(Modifier.height(18.dp))
+        }
     }
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
             title = { Text("Delete playlist?") },
             text = { Text("“${playlist.title}” will be deleted from your YouTube account.") },
-            confirmButton = { TextButton(onClick = { confirmDelete = false; onDelete(playlist) }) { Text("Delete", color = c.error) } },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
+            confirmButton = { TextButton(onClick = { confirmDelete = false; onDelete(playlist) }, modifier = Modifier.tvFocusRing(CircleShape)) { Text("Delete", color = c.error) } },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }, modifier = Modifier.tvFocusRing(CircleShape)) { Text("Cancel") } },
             properties = DialogProperties(usePlatformDefaultWidth = false),
         )
     }
@@ -692,7 +798,7 @@ fun PlaylistOptionsSheet(
 @Composable
 private fun PlaylistAction(icon: ImageVector, title: String, tint: Color = MaterialTheme.colorScheme.onSurface, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().pressable(pressedScale = 0.98f, onClick = onClick).padding(horizontal = 24.dp, vertical = 14.dp),
+        Modifier.fillMaxWidth().pressable(pressedScale = 0.98f, focusScale = 1.015f, focusShape = RoundedCornerShape(14.dp), onClick = onClick).padding(horizontal = 24.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp))
@@ -769,7 +875,7 @@ private fun ActiveDownloadRow(download: ActiveDownload, onCancel: () -> Unit) {
             Spacer(Modifier.height(4.dp))
             Text(download.status, color = c.onSurfaceVariant, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
-        IconButton(onClick = onCancel) { Icon(Icons.Rounded.Cancel, contentDescription = "Cancel download", tint = c.error) }
+        IconButton(onClick = onCancel, modifier = Modifier.tvFocusRing(CircleShape)) { Icon(Icons.Rounded.Cancel, contentDescription = "Cancel download", tint = c.error) }
     }
 }
 
@@ -777,7 +883,7 @@ private fun ActiveDownloadRow(download: ActiveDownload, onCancel: () -> Unit) {
 private fun DownloadedVideoRow(download: DownloadedVideo, onClick: () -> Unit) {
     val c = MaterialTheme.colorScheme
     Row(
-        Modifier.fillMaxWidth().pressable(pressedScale = 0.98f, onClick = onClick)
+        Modifier.fillMaxWidth().pressable(pressedScale = 0.98f, focusScale = 1.015f, focusShape = RoundedCornerShape(16.dp), onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -914,12 +1020,14 @@ fun PlaylistScreen(
                 fontFamily = RoundedHeavy, fontWeight = FontWeight.ExtraBold, fontSize = 24.sp, letterSpacing = (-0.8).sp,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
             )
-            IconButton(onClick = { playlistMenu(playlist) }) {
+            IconButton(onClick = { playlistMenu(playlist) }, modifier = Modifier.tvFocusRing(CircleShape)) {
                 Icon(Icons.Rounded.MoreVert, contentDescription = "Playlist options", tint = MaterialTheme.colorScheme.onSurface)
             }
         }
         },
     ) { top ->
+        val isTv = LocalIsTv.current
+        val screenWidth = LocalConfiguration.current.screenWidthDp.dp
         val showShortsGrid = savedShorts || (isLikedVideos && regularVideos.isEmpty() && likedShorts.isNotEmpty())
         if (feed.videos.isEmpty() && feed.recommendations.isEmpty() && !feed.loading && feed.error == null && !feed.hasMore) {
             Box(Modifier.padding(top = top)) { EmptyState(Icons.Rounded.VideoLibrary, "Nothing here yet", "Videos you add to this playlist will show up here.") }
@@ -930,6 +1038,8 @@ fun PlaylistScreen(
                 derivedStateOf { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { it >= listState.layoutInfo.totalItemsCount - 3 } == true }
             }
             LaunchedEffect(nearEnd, shortsList.size) { if (nearEnd && feed.hasMore && !feed.loading) feed.loadMore() }
+            val shortCols = if (isTv) tvGridColumns(screenWidth, 160.dp, 5) else 2
+            val shortShape = RoundedCornerShape(18.dp)
             LazyColumn(state = listState, contentPadding = contentPadding.withTop(top)) {
                 item(key = "playlist-actions") {
                     PlaylistPlaybackActions(
@@ -938,15 +1048,15 @@ fun PlaylistScreen(
                         onShuffle = { shortsList.shuffled().firstOrNull()?.let(onOpenShort) },
                     )
                 }
-                items(shortsList.chunked(2), key = { row -> row.joinToString(prefix = "shorts-") { it.id } }) { row ->
+                items(shortsList.chunked(shortCols), key = { row -> row.joinToString(prefix = "shorts-") { it.id } }) { row ->
                     Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 5.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         row.forEach { short ->
                             Box(
                                 Modifier.weight(1f)
                                     .aspectRatio(9f / 16f)
                                     .prefetchOnPress(short.id)
-                                    .pressable(pressedScale = 0.98f, onLongClick = { videoMenu(short) }, onClick = { onOpenShort(short) })
-                                    .clip(RoundedCornerShape(18.dp)),
+                                    .pressable(pressedScale = 0.98f, focusScale = 1.03f, focusShape = shortShape, onLongClick = { videoMenu(short) }, onClick = { onOpenShort(short) })
+                                    .clip(shortShape),
                             ) {
                                 Thumbnail(
                                     url = short.shortThumbnail,
@@ -959,7 +1069,7 @@ fun PlaylistScreen(
                                     modifier = Modifier.align(Alignment.BottomStart).padding(10.dp))
                             }
                         }
-                        if (row.size == 1) Spacer(Modifier.weight(1f))
+                        repeat(shortCols - row.size) { Spacer(Modifier.weight(1f)) }
                     }
                 }
                 if (feed.loading) item { Box(Modifier.fillMaxWidth().padding(18.dp), contentAlignment = Alignment.Center) { MaterialLoader(color = MaterialTheme.colorScheme.primary, size = 26.dp) } }
@@ -1103,6 +1213,8 @@ private fun PlaylistShortsShelf(
                         .prefetchOnPress(short.id)
                         .pressable(
                             pressedScale = 0.96f,
+                            focusScale = 1.03f,
+                            focusShape = RoundedCornerShape(16.dp),
                             onLongClick = { onVideoLongPress(short) },
                             onClick = { onOpenShort(short) },
                         )
@@ -1128,7 +1240,8 @@ private fun PlaylistShortsShelf(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .padding(4.dp)
-                            .size(28.dp),
+                            .size(30.dp)
+                            .tvFocusRing(CircleShape),
                     ) {
                         Icon(
                             Icons.Rounded.MoreVert,
@@ -1241,14 +1354,15 @@ private fun RecommendedVideoRow(
     onMenu: () -> Unit,
 ) {
     val c = MaterialTheme.colorScheme
+    val rowShape = RoundedCornerShape(16.dp)
     Row(
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 6.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(c.surfaceContainerLow)
             .prefetchOnPress(video.id)
-            .pressable(pressedScale = 0.98f, onLongClick = onMenu, onClick = onOpen)
+            .pressable(pressedScale = 0.98f, focusScale = 1.015f, focusShape = rowShape, onLongClick = onMenu, onClick = onOpen)
+            .clip(rowShape)
+            .background(c.surfaceContainerLow)
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1302,6 +1416,7 @@ private fun RecommendedVideoRow(
             onClick = onAdd,
             modifier = Modifier
                 .size(36.dp)
+                .tvFocusRing(CircleShape)
                 .clip(CircleShape)
                 .background(c.primaryContainer),
         ) {
@@ -1314,7 +1429,7 @@ private fun RecommendedVideoRow(
         }
         IconButton(
             onClick = onMenu,
-            modifier = Modifier.size(32.dp),
+            modifier = Modifier.size(34.dp).tvFocusRing(CircleShape),
         ) {
             Icon(
                 Icons.Rounded.MoreVert,
@@ -1339,7 +1454,8 @@ private fun PlaylistPlaybackActions(count: Int, onPlay: () -> Unit, onShuffle: (
 private fun PlaylistActionButton(label: String, icon: ImageVector, modifier: Modifier, onClick: () -> Unit) {
     val c = MaterialTheme.colorScheme
     Row(
-        modifier.clip(CircleShape).background(c.secondaryContainer).pressable(pressedScale = 0.97f, onClick = onClick)
+        modifier.pressable(pressedScale = 0.97f, focusShape = CircleShape, onClick = onClick)
+            .clip(CircleShape).background(c.secondaryContainer)
             .padding(horizontal = 18.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
@@ -1357,7 +1473,7 @@ private fun TextLink(text: String, onClick: () -> Unit) {
         color = MaterialTheme.colorScheme.primary,
         fontWeight = FontWeight.ExtraBold,
         fontSize = 14.sp,
-        modifier = Modifier.pressable(onClick = onClick).padding(8.dp),
+        modifier = Modifier.pressable(focusShape = CircleShape, onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp),
     )
 }
 
@@ -1601,6 +1717,7 @@ fun SearchScreen(
                 .padding(horizontal = 16.dp)
                 .fillMaxWidth()
                 .height(60.dp)
+                .border(if (focused) 2.5.dp else 0.dp, if (focused) c.primary else Color.Transparent, CircleShape)
                 .clip(CircleShape)
                 .background(c.surfaceContainerHigh)
                 .padding(start = 20.dp, end = 8.dp),
@@ -1630,13 +1747,16 @@ fun SearchScreen(
                         if (e.key == Key.Enter || e.key == Key.NumPadEnter) {
                             if (e.type == KeyEventType.KeyDown) submit()
                             true
+                        } else if (e.key == Key.DirectionDown && e.type == KeyEventType.KeyDown) {
+                            focus.moveFocus(FocusDirection.Down)
+                            true
                         } else false
                     },
                 )
             }
             if (state.query.isNotEmpty()) {
                 Box(
-                    modifier = Modifier.size(44.dp).pressable { state.updateQuery("") },
+                    modifier = Modifier.size(44.dp).pressable(focusShape = CircleShape) { state.updateQuery("") },
                     contentAlignment = Alignment.Center,
                 ) { Icon(Icons.Rounded.Close, "Clear", tint = c.onSurfaceVariant) }
             }
@@ -1663,9 +1783,9 @@ fun SearchScreen(
             )
             Box(
                 modifier = Modifier
+                    .pressable(focusShape = CircleShape, focusScale = 1.04f) { state.selectCategory(SearchCategory.Videos) }
                     .clip(CircleShape)
                     .background(videosBg)
-                    .clickable { state.selectCategory(SearchCategory.Videos) }
                     .padding(horizontal = 18.dp, vertical = 8.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -1701,9 +1821,9 @@ fun SearchScreen(
             )
             Box(
                 modifier = Modifier
+                    .pressable(focusShape = CircleShape, focusScale = 1.04f) { state.selectCategory(SearchCategory.Music) }
                     .clip(CircleShape)
                     .background(musicBg)
-                    .clickable { state.selectCategory(SearchCategory.Music) }
                     .padding(horizontal = 18.dp, vertical = 8.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -1737,6 +1857,7 @@ fun SearchScreen(
                     FilterChip(
                         selected = selected,
                         onClick = { state.selectMusicFilter(filter) },
+                        modifier = Modifier.tvFocusRing(CircleShape),
                         label = { Text(filter.name, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal) },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = c.primary,
@@ -1751,6 +1872,7 @@ fun SearchScreen(
         Spacer(Modifier.height(6.dp))
         } },
     ) { top ->
+        val isTv = LocalIsTv.current
         Box(Modifier.fillMaxSize()) {
             if (state.category == SearchCategory.Videos) {
                 // Suggestions are already a scrolling list with the header inset. Including
@@ -1791,6 +1913,53 @@ fun SearchScreen(
                             val list = rememberScrollToTop(scrollToTop)
                             LaunchedEffect(state.generation) { list.scrollToItem(0) }
                             val displayItems = remember(state.results) { groupSearchResults(state.results) }
+                            if (isTv) {
+                                val rows = remember(displayItems) {
+                                    buildList<List<SearchDisplayItem>> {
+                                        val buf = ArrayList<SearchDisplayItem>(2)
+                                        for (d in displayItems) {
+                                            if (d is SearchDisplayItem.ShortsShelf) {
+                                                if (buf.isNotEmpty()) { add(buf.toList()); buf.clear() }
+                                                add(listOf(d))
+                                            } else {
+                                                buf.add(d)
+                                                if (buf.size == 2) { add(buf.toList()); buf.clear() }
+                                            }
+                                        }
+                                        if (buf.isNotEmpty()) add(buf.toList())
+                                    }
+                                }
+                                LazyColumn(state = list, contentPadding = contentPadding.withTop(top)) {
+                                    items(
+                                        items = rows,
+                                        key = { row ->
+                                            when (val first = row.first()) {
+                                                is SearchDisplayItem.Normal -> "tv-row-${first.result.id}"
+                                                is SearchDisplayItem.ShortsShelf -> first.key
+                                            }
+                                        }
+                                    ) { row ->
+                                        val first = row.first()
+                                        if (first is SearchDisplayItem.ShortsShelf) {
+                                            SearchShortsShelf(first.shorts, onOpenShort)
+                                        } else {
+                                            Row(
+                                                Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            ) {
+                                                row.forEach { cell ->
+                                                    if (cell is SearchDisplayItem.Normal) {
+                                                        Box(Modifier.weight(1f)) {
+                                                            SearchResultCard(cell.result, onOpen, onOpenShort, onOpenResult)
+                                                        }
+                                                    }
+                                                }
+                                                if (row.size == 1) Spacer(Modifier.weight(1f))
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
                             LazyColumn(state = list, contentPadding = contentPadding.withTop(top)) {
                                 items(
                                     items = displayItems,
@@ -1806,6 +1975,7 @@ fun SearchScreen(
                                         is SearchDisplayItem.ShortsShelf -> SearchShortsShelf(item.shorts, onOpenShort)
                                     }
                                 }
+                            }
                             }
                         }
                     }
@@ -1877,6 +2047,8 @@ fun SearchScreen(
                                                     .fillMaxWidth()
                                                     .pressable(
                                                         pressedScale = 0.98f,
+                                                        focusScale = 1.015f,
+                                                        focusShape = RoundedCornerShape(14.dp),
                                                         onLongClick = { artistOptionsFor = artist },
                                                         onClick = { onMusicArtistClick(artist) }
                                                     )
@@ -1927,6 +2099,8 @@ fun SearchScreen(
                                                     .fillMaxWidth()
                                                     .pressable(
                                                         pressedScale = 0.98f,
+                                                        focusScale = 1.015f,
+                                                        focusShape = RoundedCornerShape(14.dp),
                                                         onLongClick = { albumOptionsFor = item },
                                                         onClick = { onMusicPlaylistClick(item) }
                                                     )
@@ -2038,7 +2212,7 @@ private fun SearchFiltersSheet(
         containerColor = popupContainerColor(c.surfaceContainerLow),
         scrimColor = popupScrimColor(),
     ) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 32.dp)) {
+        Column(Modifier.fillMaxWidth().focusGroup().padding(horizontal = 24.dp).padding(bottom = 32.dp)) {
             Text("Search filters", fontFamily = RoundedHeavy, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp)
             Spacer(Modifier.height(8.dp))
             Text("Choose what to search for", color = c.onSurfaceVariant, fontSize = 14.sp)
@@ -2046,7 +2220,7 @@ private fun SearchFiltersSheet(
             SearchFilter.entries.forEach { filter ->
                 val active = selected == filter
                 Row(
-                    Modifier.fillMaxWidth().pressable { onSelected(filter) }.padding(vertical = 14.dp),
+                    Modifier.fillMaxWidth().pressable(focusScale = 1.015f, focusShape = RoundedCornerShape(12.dp)) { onSelected(filter) }.padding(horizontal = 8.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(filter.label, modifier = Modifier.weight(1f), fontWeight = if (active) FontWeight.ExtraBold else FontWeight.SemiBold, fontSize = 16.sp)
@@ -2073,15 +2247,16 @@ private fun SearchResultCard(
         return
     }
     val c = MaterialTheme.colorScheme
+    val cardShape = RoundedCornerShape(20.dp)
     when (result.kind) {
         SearchResultKind.Channel -> {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 6.dp)
-                    .clip(RoundedCornerShape(20.dp))
+                    .pressable(focusScale = 1.02f, focusShape = cardShape) { onOpenResult(result) }
+                    .clip(cardShape)
                     .background(c.surfaceContainerLow)
-                    .pressable { onOpenResult(result) }
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -2132,9 +2307,9 @@ private fun SearchResultCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 6.dp)
-                    .clip(RoundedCornerShape(20.dp))
+                    .pressable(focusScale = 1.02f, focusShape = cardShape) { onOpenResult(result) }
+                    .clip(cardShape)
                     .background(c.surfaceContainerLow)
-                    .pressable { onOpenResult(result) }
                     .padding(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -2194,9 +2369,9 @@ private fun SearchResultCard(
                 Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 6.dp)
-                    .clip(RoundedCornerShape(20.dp))
+                    .pressable(focusScale = 1.02f, focusShape = cardShape) { onOpenResult(result) }
+                    .clip(cardShape)
                     .background(c.surfaceContainerLow)
-                    .pressable { onOpenResult(result) }
                     .padding(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -2216,6 +2391,8 @@ private fun SearchResultCard(
 fun SearchShortsShelf(shorts: List<VideoItem>, onOpenShort: (VideoItem) -> Unit) {
     if (shorts.isEmpty()) return
     val menu = LocalVideoMenu.current
+    val isTv = LocalIsTv.current
+    val cardShape = RoundedCornerShape(16.dp)
     Column(Modifier.padding(top = 4.dp, bottom = 8.dp)) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
@@ -2224,18 +2401,18 @@ fun SearchShortsShelf(shorts: List<VideoItem>, onOpenShort: (VideoItem) -> Unit)
             Text("i", color = Color(0xFFFF0000), fontSize = 21.sp, fontWeight = FontWeight.ExtraBold)
             Text("Shorts", fontSize = 21.sp, fontWeight = FontWeight.ExtraBold)
         }
-        shorts.chunked(2).forEach { rowShorts ->
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+        if (isTv) {
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                rowShorts.forEach { short ->
+                items(shorts, key = { "search-short-${it.id}" }) { short ->
                     Box(
-                        Modifier.weight(1f)
+                        Modifier.width(154.dp)
                             .aspectRatio(9f / 16f)
                             .prefetchOnPress(short.id)
-                            .pressable(pressedScale = 0.98f, onLongClick = { menu(short) }, onClick = { onOpenShort(short) })
-                            .clip(RoundedCornerShape(16.dp)),
+                            .pressable(pressedScale = 0.98f, focusScale = 1.03f, focusShape = cardShape, onLongClick = { menu(short) }, onClick = { onOpenShort(short) })
+                            .clip(cardShape),
                     ) {
                         Thumbnail(
                             url = short.shortThumbnail,
@@ -2248,13 +2425,56 @@ fun SearchShortsShelf(shorts: List<VideoItem>, onOpenShort: (VideoItem) -> Unit)
                                 Brush.verticalGradient(0.42f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.78f)),
                             ),
                         )
-                        Icon(
-                            Icons.Rounded.MoreVert,
-                            contentDescription = "Short options",
-                            tint = Color.White,
-                            modifier = Modifier.align(Alignment.TopEnd).padding(7.dp).size(19.dp)
-                                .clickable { menu(short) },
+                        IconButton(
+                            onClick = { menu(short) },
+                            modifier = Modifier.align(Alignment.TopEnd).padding(2.dp).size(34.dp).tvFocusRing(CircleShape),
+                        ) {
+                            Icon(Icons.Rounded.MoreVert, contentDescription = "Short options", tint = Color.White, modifier = Modifier.size(19.dp))
+                        }
+                        Text(
+                            short.title,
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            lineHeight = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.align(Alignment.BottomStart).padding(horizontal = 10.dp, vertical = 11.dp),
                         )
+                    }
+                }
+            }
+        } else {
+        shorts.chunked(2).forEach { rowShorts ->
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                rowShorts.forEach { short ->
+                    Box(
+                        Modifier.weight(1f)
+                            .aspectRatio(9f / 16f)
+                            .prefetchOnPress(short.id)
+                            .pressable(pressedScale = 0.98f, focusScale = 1.03f, focusShape = cardShape, onLongClick = { menu(short) }, onClick = { onOpenShort(short) })
+                            .clip(cardShape),
+                    ) {
+                        Thumbnail(
+                            url = short.shortThumbnail,
+                            modifier = Modifier.fillMaxSize(),
+                            radius = 0,
+                            fallbackUrl = short.thumbnail,
+                        )
+                        Box(
+                            Modifier.fillMaxSize().background(
+                                Brush.verticalGradient(0.42f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.78f)),
+                            ),
+                        )
+                        IconButton(
+                            onClick = { menu(short) },
+                            modifier = Modifier.align(Alignment.TopEnd).padding(2.dp).size(34.dp).tvFocusRing(CircleShape),
+                        ) {
+                            Icon(Icons.Rounded.MoreVert, contentDescription = "Short options", tint = Color.White, modifier = Modifier.size(19.dp))
+                        }
                         Text(
                             short.title,
                             color = Color.White,
@@ -2270,6 +2490,7 @@ fun SearchShortsShelf(shorts: List<VideoItem>, onOpenShort: (VideoItem) -> Unit)
                 if (rowShorts.size == 1) Spacer(Modifier.weight(1f))
             }
         }
+        }
     }
 }
 
@@ -2279,7 +2500,7 @@ private fun SearchSuggestionsList(suggestions: List<String>, contentPadding: Pad
     LazyColumn(contentPadding = contentPadding) {
         items(suggestions, key = { it }) { suggestion ->
             Row(
-                modifier = Modifier.fillMaxWidth().height(52.dp).pressable { onSearch(suggestion) }.padding(horizontal = 24.dp),
+                modifier = Modifier.fillMaxWidth().height(52.dp).pressable(focusScale = 1.015f, focusShape = RoundedCornerShape(12.dp)) { onSearch(suggestion) }.padding(horizontal = 24.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(Icons.Rounded.Search, null, tint = c.onSurfaceVariant, modifier = Modifier.size(21.dp))
@@ -2307,6 +2528,8 @@ fun MusicSearchTrackRow(
             .fillMaxWidth()
             .pressable(
                 pressedScale = 0.98f,
+                focusScale = 1.015f,
+                focusShape = RoundedCornerShape(14.dp),
                 onLongClick = onLongClick,
                 onClick = onClick,
             )
@@ -2487,9 +2710,12 @@ fun MusicHomeScreen(
                 }
                 Icon(Icons.Rounded.Equalizer, "Music", tint = c.primary, modifier = Modifier.size(30.dp))
             }
+            val isTv = LocalIsTv.current
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 18.dp).clip(CircleShape)
-                    .background(c.surfaceContainerHigh).pressable(onClick = onSearch)
+                Modifier.fillMaxWidth().padding(horizontal = 18.dp)
+                    .pressable(focusShape = CircleShape, onClick = onSearch)
+                    .clip(CircleShape)
+                    .background(c.surfaceContainerHigh)
                     .padding(horizontal = 18.dp, vertical = 15.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -2499,13 +2725,15 @@ fun MusicHomeScreen(
             }
             Spacer(Modifier.height(18.dp))
             if (featured != null) {
+                val featShape = RoundedCornerShape(26.dp)
                 Box(
-                    Modifier.fillMaxWidth().padding(horizontal = 18.dp).height(270.dp)
-                        .clip(RoundedCornerShape(26.dp)).pressable {
+                    Modifier.fillMaxWidth().padding(horizontal = 18.dp).height(if (isTv) 210.dp else 270.dp)
+                        .pressable(focusScale = 1.02f, focusShape = featShape) {
                             val mix = state.mixes.firstOrNull { it.tracks.any { song -> song.id == featured.id } }
                             val list = mix?.tracks.orEmpty()
                             onPlay(list, list.indexOfFirst { it.id == featured.id }.coerceAtLeast(0))
-                        },
+                        }
+                        .clip(featShape),
                 ) {
                     Thumbnail(featured.thumbnail, Modifier.fillMaxSize(), radius = 0)
                     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.9f)))))
@@ -2542,11 +2770,11 @@ fun MusicHomeScreen(
                         Text(mix.title, color = c.onSurface, fontSize = 21.sp, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text("From YouTube Music", color = c.onSurfaceVariant, fontSize = 12.sp)
                     }
-                    Icon(Icons.Rounded.PlayArrow, "Play ${mix.title}", tint = c.primary, modifier = Modifier.size(28.dp).pressable { onPlay(mix.tracks, 0) })
+                    Icon(Icons.Rounded.PlayArrow, "Play ${mix.title}", tint = c.primary, modifier = Modifier.size(32.dp).pressable(focusShape = CircleShape) { onPlay(mix.tracks, 0) })
                 }
                 LazyRow(contentPadding = PaddingValues(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(mix.tracks.take(16), key = { "${mix.query}-${it.id}" }) { track ->
-                        Column(Modifier.width(158.dp).pressable {
+                        Column(Modifier.width(158.dp).pressable(focusScale = 1.03f, focusShape = RoundedCornerShape(20.dp)) {
                             onPlay(mix.tracks, mix.tracks.indexOfFirst { it.id == track.id }.coerceAtLeast(0))
                         }) {
                             Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(20.dp))) {
@@ -2563,7 +2791,7 @@ fun MusicHomeScreen(
             }
         }
         item {
-            Row(Modifier.fillMaxWidth().pressable(onClick = onSearch).padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().pressable(focusScale = 1.015f, focusShape = RoundedCornerShape(14.dp), onClick = onSearch).padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Rounded.Album, null, tint = c.primary)
                 Spacer(Modifier.width(12.dp))
                 Text("Explore more songs and artists", color = c.onSurface, fontWeight = FontWeight.Bold)
@@ -2591,7 +2819,7 @@ private fun SearchHistoryList(history: List<String>, contentPadding: PaddingValu
                 modifier = Modifier
                     .animateItem()
                     .fillMaxWidth()
-                    .pressable { onSearch(query) }
+                    .pressable(focusScale = 1.015f, focusShape = RoundedCornerShape(12.dp)) { onSearch(query) }
                     .height(52.dp)
                     .padding(start = 24.dp, end = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -2607,7 +2835,7 @@ private fun SearchHistoryList(history: List<String>, contentPadding: PaddingValu
                     overflow = TextOverflow.Ellipsis,
                 )
                 Box(
-                    modifier = Modifier.size(44.dp).pressable { SearchHistory.remove(query) },
+                    modifier = Modifier.size(44.dp).pressable(focusShape = CircleShape) { SearchHistory.remove(query) },
                     contentAlignment = Alignment.Center,
                 ) { Icon(Icons.Rounded.Close, "Remove", tint = c.onSurfaceVariant, modifier = Modifier.size(20.dp)) }
             }

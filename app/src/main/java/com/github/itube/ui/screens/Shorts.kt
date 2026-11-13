@@ -19,11 +19,24 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
+import androidx.compose.ui.platform.LocalFocusManager
+import com.github.itube.ui.tv.LocalIsTv
+import com.github.itube.ui.tv.tvFocusRing
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -103,6 +116,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -1474,7 +1488,7 @@ fun ShortsScreen(shorts: ShortsState, progress: () -> Float, overlayBottom: Dp) 
         ) {
             when {
                 shorts.items.isNotEmpty() -> key(shorts.feedVersion) {
-                    ShortsPager(shorts, overlayBottom, onHeaderVisible = { headerVisible = it })
+                    ShortsPager(shorts, overlayBottom, onHeaderVisible = { headerVisible = it }, onMore = { showMenu = true })
                 }
                 shorts.error != null && !shorts.loading -> ShortsProblem(shorts.error.orEmpty(), onRetry = shorts::refresh)
                 else -> MaterialLoader(color = Ink, size = 36.dp, modifier = Modifier.align(Alignment.Center))
@@ -1577,28 +1591,36 @@ private fun ShortsHeader(shorts: ShortsState, onMore: () -> Unit) {
         )
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Icon(
-                imageVector = if (shorts.isMuted) Icons.AutoMirrored.Rounded.VolumeOff else Icons.AutoMirrored.Rounded.VolumeUp,
-                contentDescription = if (shorts.isMuted) "Unmute" else "Mute",
-                tint = Ink,
+            Box(
                 modifier = Modifier
-                    .size(32.dp)
-                    .clip(CircleShape)
-                    .clickable { shorts.toggleMute() }
-                    .padding(5.dp),
-            )
-            Icon(
-                Icons.Rounded.MoreVert,
-                contentDescription = "Shorts options",
-                tint = Ink,
+                    .size(40.dp)
+                    .pressable(focusShape = CircleShape) { shorts.toggleMute() }
+                    .clip(CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = if (shorts.isMuted) Icons.AutoMirrored.Rounded.VolumeOff else Icons.AutoMirrored.Rounded.VolumeUp,
+                    contentDescription = if (shorts.isMuted) "Unmute" else "Mute",
+                    tint = Ink,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+            Box(
                 modifier = Modifier
-                    .size(32.dp)
-                    .clip(CircleShape)
-                    .clickable(onClick = onMore)
-                    .padding(5.dp),
-            )
+                    .size(40.dp)
+                    .pressable(focusShape = CircleShape, onClick = onMore)
+                    .clip(CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Rounded.MoreVert,
+                    contentDescription = "Shorts options",
+                    tint = Ink,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
         }
     }
 }
@@ -1636,6 +1658,7 @@ private fun ShortsMoreSheet(
         Column(
             Modifier
                 .fillMaxWidth()
+                .focusGroup()
                 .padding(horizontal = 22.dp, vertical = 18.dp)
         ) {
             Row(
@@ -1649,7 +1672,7 @@ private fun ShortsMoreSheet(
                         Text(it, color = c.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 13.sp, modifier = Modifier.padding(top = 2.dp))
                     }
                 }
-                IconButton(onClick = onDismiss) {
+                IconButton(onClick = onDismiss, modifier = Modifier.tvFocusRing(CircleShape)) {
                     Icon(Icons.Rounded.Close, contentDescription = "Close", tint = c.onSurfaceVariant)
                 }
             }
@@ -1675,11 +1698,12 @@ private fun ShortsOption(
     onClick: () -> Unit,
 ) {
     val c = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(16.dp)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick)
+            .pressable(pressedScale = 0.98f, focusScale = 1.015f, focusShape = shape, onClick = onClick)
+            .clip(shape)
             .padding(horizontal = 12.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1754,6 +1778,7 @@ private fun ShortsDescriptionSheet(shorts: ShortsState, onDismiss: () -> Unit) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .focusGroup()
                 .padding(horizontal = 20.dp, vertical = 16.dp)
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -1775,11 +1800,11 @@ private fun ShortsDescriptionSheet(shorts: ShortsState, onDismiss: () -> Unit) {
                             clipboard.setText(AnnotatedString(description))
                             Toast.makeText(context, "Description copied", Toast.LENGTH_SHORT).show()
                         },
-                        modifier = Modifier.size(38.dp),
+                        modifier = Modifier.size(38.dp).tvFocusRing(CircleShape),
                     ) {
                         Icon(Icons.Outlined.ContentCopy, contentDescription = "Copy", tint = c.onSurfaceVariant, modifier = Modifier.size(20.dp))
                     }
-                    IconButton(onClick = onDismiss, modifier = Modifier.size(38.dp)) {
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(38.dp).tvFocusRing(CircleShape)) {
                         Icon(Icons.Rounded.Close, contentDescription = "Close", tint = c.onSurfaceVariant, modifier = Modifier.size(22.dp))
                     }
                 }
@@ -1823,9 +1848,9 @@ private fun ShortsDescriptionSheet(shorts: ShortsState, onDismiss: () -> Unit) {
                 }
                 Box(
                     modifier = Modifier
+                        .pressable(focusShape = RoundedCornerShape(20.dp)) { shorts.toggleSubscribe() }
                         .clip(RoundedCornerShape(20.dp))
                         .background(if (isSubscribed) c.surfaceContainerHighest else c.primary)
-                        .clickable { shorts.toggleSubscribe() }
                         .padding(horizontal = 14.dp, vertical = 7.dp),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -1900,8 +1925,8 @@ private fun ShortsDescriptionSheet(shorts: ShortsState, onDismiss: () -> Unit) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .pressable(focusScale = 1.02f, focusShape = RoundedCornerShape(12.dp)) { bodyExpanded = !bodyExpanded }
                             .clip(RoundedCornerShape(12.dp))
-                            .clickable { bodyExpanded = !bodyExpanded }
                             .padding(vertical = 6.dp),
                         contentAlignment = Alignment.Center,
                     ) {
@@ -1928,10 +1953,10 @@ private fun ShortsDescriptionSheet(shorts: ShortsState, onDismiss: () -> Unit) {
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 13.sp,
                             modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable {
+                                .pressable(focusShape = RoundedCornerShape(8.dp)) {
                                     runCatching { uriHandler.openUri("https://www.youtube.com/hashtag/${tag.removePrefix("#")}") }
                                 }
+                                .clip(RoundedCornerShape(8.dp))
                                 .padding(horizontal = 8.dp, vertical = 4.dp),
                         )
                     }
@@ -1951,11 +1976,11 @@ private fun ShortsDescriptionSheet(shorts: ShortsState, onDismiss: () -> Unit) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .clickable {
+                                .pressable(focusScale = 1.015f, focusShape = RoundedCornerShape(10.dp)) {
                                     shorts.assigned[shorts.index]?.exo?.seekTo(ch.startMs)
                                     onDismiss()
                                 }
+                                .clip(RoundedCornerShape(10.dp))
                                 .padding(horizontal = 8.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -2017,6 +2042,7 @@ private fun ShortsSpeedSheet(shorts: ShortsState, onDismiss: () -> Unit) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .focusGroup()
                 .padding(horizontal = 22.dp, vertical = 18.dp),
         ) {
             Row(
@@ -2028,7 +2054,7 @@ private fun ShortsSpeedSheet(shorts: ShortsState, onDismiss: () -> Unit) {
                     Text("Playback Speed", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = c.onSurface)
                     Text("Current speed: ${if (shorts.playbackSpeed == 1f) "Normal (1.0×)" else "${shorts.playbackSpeed}×"}", color = c.onSurfaceVariant, fontSize = 13.sp)
                 }
-                IconButton(onClick = onDismiss) {
+                IconButton(onClick = onDismiss, modifier = Modifier.tvFocusRing(CircleShape)) {
                     Icon(Icons.Rounded.Close, contentDescription = "Close", tint = c.onSurfaceVariant)
                 }
             }
@@ -2040,11 +2066,11 @@ private fun ShortsSpeedSheet(shorts: ShortsState, onDismiss: () -> Unit) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
-                        .clickable {
+                        .pressable(focusScale = 1.015f, focusShape = RoundedCornerShape(14.dp)) {
                             shorts.applyPlaybackSpeed(sp)
                             onDismiss()
                         }
+                        .clip(RoundedCornerShape(14.dp))
                         .background(if (picked) c.primaryContainer.copy(alpha = 0.55f) else Color.Transparent)
                         .padding(horizontal = 14.dp, vertical = 13.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -2087,6 +2113,7 @@ private fun ShortsQualitySheet(shorts: ShortsState, onDismiss: () -> Unit) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .focusGroup()
                 .padding(horizontal = 22.dp, vertical = 18.dp)
                 .verticalScroll(rememberScrollState()),
         ) {
@@ -2099,7 +2126,7 @@ private fun ShortsQualitySheet(shorts: ShortsState, onDismiss: () -> Unit) {
                     Text("Quality", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = c.onSurface)
                     Text("Choose resolution for this Short", color = c.onSurfaceVariant, fontSize = 13.sp)
                 }
-                IconButton(onClick = onDismiss) {
+                IconButton(onClick = onDismiss, modifier = Modifier.tvFocusRing(CircleShape)) {
                     Icon(Icons.Rounded.Close, contentDescription = "Close", tint = c.onSurfaceVariant)
                 }
             }
@@ -2108,11 +2135,11 @@ private fun ShortsQualitySheet(shorts: ShortsState, onDismiss: () -> Unit) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .clickable {
+                    .pressable(focusScale = 1.015f, focusShape = RoundedCornerShape(14.dp)) {
                         shorts.selectQuality(null)
                         onDismiss()
                     }
+                    .clip(RoundedCornerShape(14.dp))
                     .background(if (autoPicked) c.primaryContainer.copy(alpha = 0.55f) else Color.Transparent)
                     .padding(horizontal = 14.dp, vertical = 13.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -2138,11 +2165,11 @@ private fun ShortsQualitySheet(shorts: ShortsState, onDismiss: () -> Unit) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
-                        .clickable {
+                        .pressable(focusScale = 1.015f, focusShape = RoundedCornerShape(14.dp)) {
                             shorts.selectQuality(h)
                             onDismiss()
                         }
+                        .clip(RoundedCornerShape(14.dp))
                         .background(if (picked) c.primaryContainer.copy(alpha = 0.55f) else Color.Transparent)
                         .padding(horizontal = 14.dp, vertical = 13.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -2195,6 +2222,7 @@ private fun ShortsAudioTrackSheet(shorts: ShortsState, onDismiss: () -> Unit) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .focusGroup()
                 .padding(horizontal = 22.dp, vertical = 18.dp)
                 .verticalScroll(rememberScrollState()),
         ) {
@@ -2207,7 +2235,7 @@ private fun ShortsAudioTrackSheet(shorts: ShortsState, onDismiss: () -> Unit) {
                     Text("Audio Track", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = c.onSurface)
                     Text("Dubbed & translated audio streams", color = c.onSurfaceVariant, fontSize = 13.sp)
                 }
-                IconButton(onClick = onDismiss) {
+                IconButton(onClick = onDismiss, modifier = Modifier.tvFocusRing(CircleShape)) {
                     Icon(Icons.Rounded.Close, contentDescription = "Close", tint = c.onSurfaceVariant)
                 }
             }
@@ -2216,11 +2244,11 @@ private fun ShortsAudioTrackSheet(shorts: ShortsState, onDismiss: () -> Unit) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .clickable {
+                    .pressable(focusScale = 1.015f, focusShape = RoundedCornerShape(14.dp)) {
                         shorts.selectAudioTrack(null)
                         onDismiss()
                     }
+                    .clip(RoundedCornerShape(14.dp))
                     .background(if (defaultPicked) c.primaryContainer.copy(alpha = 0.55f) else Color.Transparent)
                     .padding(horizontal = 14.dp, vertical = 13.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -2245,11 +2273,11 @@ private fun ShortsAudioTrackSheet(shorts: ShortsState, onDismiss: () -> Unit) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .clickable {
+                            .pressable(focusScale = 1.015f, focusShape = RoundedCornerShape(14.dp)) {
                                 shorts.selectAudioTrack(track.id)
                                 onDismiss()
                             }
+                            .clip(RoundedCornerShape(14.dp))
                             .background(if (isPicked) c.primaryContainer.copy(alpha = 0.55f) else Color.Transparent)
                             .padding(horizontal = 14.dp, vertical = 13.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -2321,8 +2349,20 @@ private fun bottomCornerRadius(view: android.view.View): Int {
 }
 
 @Composable
-private fun ShortsPager(shorts: ShortsState, overlayBottom: Dp, onHeaderVisible: (Boolean) -> Unit) {
+private fun ShortsPager(
+    shorts: ShortsState,
+    overlayBottom: Dp,
+    onHeaderVisible: (Boolean) -> Unit,
+    onMore: () -> Unit,
+) {
     val pager = rememberPagerState(initialPage = shorts.index.coerceIn(0, (shorts.items.size - 1).coerceAtLeast(0))) { shorts.items.size }
+    val scope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
+    val isTv = LocalIsTv.current
+    val pagerFocus = remember { FocusRequester() }
+    LaunchedEffect(isTv) {
+        if (isTv) runCatching { pagerFocus.requestFocus() }
+    }
     LaunchedEffect(pager) { snapshotFlow { pager.settledPage }.collect { shorts.select(it) } }
     LaunchedEffect(pager) {
         var previous = pager.currentPage + pager.currentPageOffsetFraction
@@ -2334,7 +2374,60 @@ private fun ShortsPager(shorts: ShortsState, overlayBottom: Dp, onHeaderVisible:
     }
     VerticalPager(
         state = pager,
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .focusRequester(pagerFocus)
+            .focusable()
+            .onPreviewKeyEvent { ev ->
+                if (ev.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                when (ev.key) {
+                    Key.DirectionCenter, Key.Enter, Key.Spacebar, Key.MediaPlayPause -> {
+                        shorts.togglePause()
+                        onHeaderVisible(true)
+                        true
+                    }
+                    Key.MediaPlay -> {
+                        if (shorts.userPaused) shorts.togglePause()
+                        true
+                    }
+                    Key.MediaPause -> {
+                        if (!shorts.userPaused) shorts.togglePause()
+                        true
+                    }
+                    Key.DirectionDown, Key.ChannelDown -> {
+                        val next = pager.currentPage + 1
+                        if (next < shorts.items.size) {
+                            scope.launch { pager.animateScrollToPage(next) }
+                            onHeaderVisible(true)
+                            true
+                        } else {
+                            focusManager.moveFocus(FocusDirection.Down)
+                        }
+                    }
+                    Key.DirectionUp, Key.ChannelUp -> {
+                        val prev = pager.currentPage - 1
+                        if (prev >= 0) {
+                            scope.launch { pager.animateScrollToPage(prev) }
+                            onHeaderVisible(true)
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                    Key.DirectionRight -> {
+                        focusManager.moveFocus(FocusDirection.Down)
+                        true
+                    }
+                    Key.DirectionLeft -> {
+                        focusManager.moveFocus(FocusDirection.Left)
+                    }
+                    Key.Menu -> {
+                        onMore()
+                        true
+                    }
+                    else -> false
+                }
+            },
         // The pages either side are composed, so their views (and loaded first frames) are ready mid-swipe.
         beyondViewportPageCount = 1,
         key = { shorts.items.getOrNull(it)?.id ?: it },
@@ -2520,11 +2613,13 @@ fun ShortsBar(shorts: ShortsState, progress: () -> Float, onHome: () -> Unit, mo
     val live by remember { derivedStateOf { progress() > 0.99f } }
     var origin by remember { mutableStateOf(Offset.Zero) }
     BoxWithConstraints(
-        modifier.onGloballyPositioned {
-            origin = it.positionInRoot()
-            shorts.barTop = origin.y
-            shorts.barBottom = origin.y + it.size.height
-        },
+        modifier
+            .focusGroup()
+            .onGloballyPositioned {
+                origin = it.positionInRoot()
+                shorts.barTop = origin.y
+                shorts.barBottom = origin.y + it.size.height
+            },
     ) {
         val density = LocalDensity.current
         val g = remember(constraints.maxWidth, constraints.maxHeight, density) {
@@ -2644,7 +2739,7 @@ private fun GlassSlot(
                 scaleX = a.scale
                 scaleY = a.scale
             }
-            .pressable(enabled = enabled, onClick = onClick)
+            .pressable(enabled = enabled, focusShape = CircleShape, focusScale = 1.08f, onClick = onClick)
             .semanticsLabel(description),
         contentAlignment = Alignment.Center,
     ) { content() }
@@ -2821,6 +2916,7 @@ fun ShortsChannelMenu(shorts: ShortsState, bottom: Dp, onChannel: (String) -> Un
                 .align(Alignment.BottomEnd)
                 .padding(end = end, bottom = bottom)
                 .width(MenuWidth)
+                .focusGroup()
                 .onGloballyPositioned { origin = it.positionInRoot() }
                 .graphicsLayer {
                     alpha = shown.coerceIn(0f, 1f)
@@ -2862,7 +2958,7 @@ fun ShortsChannelMenu(shorts: ShortsState, bottom: Dp, onChannel: (String) -> Un
                             Modifier
                                 .squishOn(bell)
                                 .size(38.dp)
-                                .pressable(enabled = open) {
+                                .pressable(enabled = open, focusShape = CircleShape) {
                                     toggleBell(BellChannel(channelId, details?.item?.channel?.ifBlank { null }, details?.item?.avatar))
                                 }
                                 .clip(CircleShape)
@@ -2896,7 +2992,7 @@ private fun MenuRow(icon: ImageVector, label: String, enabled: Boolean, trailing
     androidx.compose.foundation.layout.Row(
         Modifier
             .fillMaxWidth()
-            .pressable(enabled = enabled, pressedScale = 0.97f, onClick = onClick)
+            .pressable(enabled = enabled, pressedScale = 0.97f, focusScale = 1.02f, focusShape = RoundedCornerShape(14.dp), onClick = onClick)
             // A trailing key keeps the row its usual height.
             .padding(start = 18.dp, end = if (trailing != null) 10.dp else 18.dp, top = if (trailing != null) 4.dp else 12.dp, bottom = if (trailing != null) 4.dp else 12.dp),
         verticalAlignment = Alignment.CenterVertically,

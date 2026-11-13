@@ -1,9 +1,9 @@
 package com.github.itube.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
@@ -49,7 +50,10 @@ import androidx.compose.ui.unit.sp
 import com.github.itube.RoundedHeavy
 import com.github.itube.MoodCategory
 import com.github.itube.MusicBackend
+import com.github.itube.pressable
 import com.github.itube.ui.components.MaterialLoader
+import com.github.itube.ui.tv.tvFocusRing
+import com.github.itube.ui.tv.tvGridColumns
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -94,7 +98,7 @@ fun iMusicMoodsAndGenresScreen(
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBackClick) {
+                    IconButton(onClick = onBackClick, modifier = Modifier.tvFocusRing(CircleShape)) {
                         Icon(
                             Icons.AutoMirrored.Rounded.ArrowBack,
                             contentDescription = "Back",
@@ -111,20 +115,23 @@ fun iMusicMoodsAndGenresScreen(
                 MaterialLoader(color = c.primary, size = 40.dp)
             }
         } else {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                contentPadding = PaddingValues(
-                    start = 16.dp,
-                    end = 16.dp,
-                    top = padding.calculateTopPadding() + 8.dp,
-                    bottom = navBottom + 96.dp,
-                ),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                items(categories, key = { it.title }) { mood ->
-                    MoodCard(mood = mood, onClick = { onMoodClick(mood) })
+            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                val cols = tvGridColumns(maxWidth, minColumnWidth = 220.dp, maxColumns = 4)
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(cols),
+                    contentPadding = PaddingValues(
+                        start = 16.dp,
+                        end = 16.dp,
+                        top = padding.calculateTopPadding() + 8.dp,
+                        bottom = navBottom + 96.dp,
+                    ),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    items(categories, key = { it.title }) { mood ->
+                        MoodCard(mood = mood, onClick = { onMoodClick(mood) })
+                    }
                 }
             }
         }
@@ -144,9 +151,9 @@ fun MoodCard(
         modifier = modifier
             .fillMaxWidth()
             .height(52.dp)
+            .pressable(focusShape = RoundedCornerShape(12.dp), focusScale = 1.03f, onClick = onClick)
             .clip(RoundedCornerShape(12.dp))
-            .background(cardBg)
-            .clickable(onClick = onClick),
+            .background(cardBg),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Left accent stripe

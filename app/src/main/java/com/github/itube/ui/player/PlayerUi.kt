@@ -1,7 +1,9 @@
 package com.github.itube
 
+import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -16,6 +18,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -25,16 +28,20 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.lazy.LazyColumn
@@ -340,86 +347,218 @@ fun PlayerScreen(
                 .background(Color.Black),
         )
         ActionMessage(state, Modifier.align(Alignment.BottomCenter).zIndex(1f).padding(bottom = bottomClearance + 8.dp))
-        Column(Modifier.fillMaxSize()) {
-            Spacer(Modifier.height(top + StageTopGap))
-            // Pinned: the video stays put while the details scroll beneath it (and tracks portrait fullscreen pull).
-            VideoStage(state, morph, fold, onCollapse, onFullscreen, interactive, portraitFsOffset = { portraitFsPull.value * portraitFsTravelPx })
-            // While collapsing the details are invisible anyway; leaving them out keeps them
-            // from catching touches meant for the mini-player.
-            if (!showDetails) Spacer(Modifier.weight(1f)) else
-            LazyColumn(
-                modifier = Modifier
-                    .weight(1f)
-                    .nestedScroll(detailsPull)
-                    .graphicsLayer {
-                        // The details ride along under the video's bottom edge (so they never
-                        // overlap it mid-morph) and only fade in for the last stretch; live-slides with portrait pull.
-                        val p = morph.progress.value
-                        val fsFactor = (1f - portraitFsPull.value * 1.5f).coerceIn(0f, 1f)
-                        alpha = if (p < 1f && state.sheet.isPanel) 0f else ramp(p, DetailsFadeStart) * fsFactor
-                        val g = morph.geometry
-                        val morphY = if (g != null) lerpF(g.miniThumb.bottom - g.stage.bottom, 0f, p) else 0f
-                        translationY = morphY + portraitFsPull.value * portraitFsTravelPx
-                    },
-                contentPadding = PaddingValues(bottom = bottomClearance + 16.dp),
+        val isLandscapeScreen = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE ||
+            configuration.screenWidthDp > configuration.screenHeightDp
+        if (isLandscapeScreen) {
+            BoxWithConstraints(
+                Modifier
+                    .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.displayCutout)
+                    .padding(top = top + StageTopGap),
             ) {
-                item(key = "info") {
-                    Column(Modifier.padding(horizontal = 20.dp)) {
-                        Spacer(Modifier.height(18.dp))
-                        Text(
-                            item.title,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .pressable { state.sheet = PlayerSheet.Description },
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 19.sp,
-                            lineHeight = 23.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Spacer(Modifier.height(3.dp))
-                        val handle = Regex("/@([^/?]+)").find(item.channelUrl.orEmpty())?.groupValues?.getOrNull(1)?.let { "@$it" } ?: item.channel
-                        val stats = listOfNotNull(
-                            handle.takeIf { it.isNotBlank() },
-                            details?.likes?.takeIf { it > 0 }?.let { "${formatCount(it)} likes" },
-                            item.views.takeIf { it >= 0 }?.let { "${formatCount(it)} views" },
-                            item.uploaded?.ifBlank { null },
-                        ).joinToString("  ")
-                        val hasDescription = !details?.description.isNullOrBlank()
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(stats, modifier = Modifier.weight(1f), color = c.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            if (hasDescription) {
+                val maxStageH = (maxHeight * 0.64f).coerceAtLeast(180.dp)
+                Row(
+                    Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Column(
+                        Modifier
+                            .weight(0.56f)
+                            .fillMaxHeight()
+                            .verticalScroll(rememberScrollState())
+                            .padding(bottom = bottomClearance + 16.dp),
+                    ) {
+                        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+                            VideoStage(
+                                state = state,
+                                morph = morph,
+                                fold = fold,
+                                onCollapse = onCollapse,
+                                onFullscreen = onFullscreen,
+                                interactive = interactive,
+                                portraitFsOffset = { portraitFsPull.value * portraitFsTravelPx },
+                                maxHeight = maxStageH,
+                            )
+                        }
+                        if (showDetails) {
+                            Column(
+                                Modifier.graphicsLayer {
+                                    val p = morph.progress.value
+                                    val fsFactor = (1f - portraitFsPull.value * 1.5f).coerceIn(0f, 1f)
+                                    alpha = if (p < 1f && state.sheet.isPanel) 0f else ramp(p, DetailsFadeStart) * fsFactor
+                                },
+                            ) {
+                                Spacer(Modifier.height(12.dp))
                                 Text(
-                                    "See more",
-                                    modifier = Modifier.pressable { state.sheet = PlayerSheet.Description },
-                                    color = c.onSurface,
-                                    fontSize = 12.sp,
+                                    item.title,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .pressable(focusScale = 1.015f, focusShape = RoundedCornerShape(10.dp)) {
+                                            state.sheet = PlayerSheet.Description
+                                        }
+                                        .padding(vertical = 2.dp),
                                     fontWeight = FontWeight.SemiBold,
+                                    fontSize = 18.sp,
+                                    lineHeight = 22.sp,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
                                 )
+                                Spacer(Modifier.height(3.dp))
+                                val handle = Regex("/@([^/?]+)").find(item.channelUrl.orEmpty())?.groupValues?.getOrNull(1)?.let { "@$it" } ?: item.channel
+                                val stats = listOfNotNull(
+                                    handle.takeIf { it.isNotBlank() },
+                                    details?.likes?.takeIf { it > 0 }?.let { "${formatCount(it)} likes" },
+                                    item.views.takeIf { it >= 0 }?.let { "${formatCount(it)} views" },
+                                    item.uploaded?.ifBlank { null },
+                                ).joinToString("  ")
+                                val hasDescription = !details?.description.isNullOrBlank()
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(stats, modifier = Modifier.weight(1f), color = c.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    if (hasDescription) {
+                                        Text(
+                                            "See more",
+                                            modifier = Modifier
+                                                .pressable(focusShape = RoundedCornerShape(8.dp)) { state.sheet = PlayerSheet.Description }
+                                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                                            color = c.onSurface,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.height(10.dp))
+                                PlayerActions(state, compactSpacing = true)
                             }
                         }
-                        Spacer(Modifier.height(14.dp))
-                        PlayerActions(state)
-                        if (details?.quality != "Downloaded") {
-                            CommentsCard(state.comments, onOpen = { state.sheet = PlayerSheet.Comments })
+                    }
+                    if (!showDetails) {
+                        Spacer(Modifier.weight(0.44f))
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .weight(0.44f)
+                                .fillMaxHeight()
+                                .graphicsLayer {
+                                    val p = morph.progress.value
+                                    val fsFactor = (1f - portraitFsPull.value * 1.5f).coerceIn(0f, 1f)
+                                    alpha = if (p < 1f && state.sheet.isPanel) 0f else ramp(p, DetailsFadeStart) * fsFactor
+                                },
+                            contentPadding = PaddingValues(top = 4.dp, bottom = bottomClearance + 20.dp),
+                        ) {
+                            item(key = "cards") {
+                                Column {
+                                    if (details?.quality != "Downloaded") {
+                                        CommentsCard(state.comments, onOpen = { state.sheet = PlayerSheet.Comments })
+                                    }
+                                    QueueCard(state, onOpen = { state.sheet = PlayerSheet.Queue })
+                                }
+                            }
+                            val related = details?.related.orEmpty()
+                            if (related.isNotEmpty()) {
+                                item(key = "moreTitle") { SectionTitle("More videos") }
+                                items(related, key = { "rel-" + it.id }, contentType = { "videoRow" }) { video ->
+                                    VideoRow(video, onClick = { onOpen(video) })
+                                }
+                            } else if (state.loading) {
+                                item(key = "loading") {
+                                    Column(
+                                        modifier = Modifier.padding(vertical = 8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        repeat(3) {
+                                            VideoRowSkeleton()
+                                        }
+                                    }
+                                }
+                            }
                         }
-                        QueueCard(state, onOpen = { state.sheet = PlayerSheet.Queue })
                     }
                 }
-                val related = details?.related.orEmpty()
-                if (related.isNotEmpty()) {
-                    item(key = "moreTitle") { SectionTitle("More videos") }
-                    items(related, key = { "rel-" + it.id }) { video ->
-                        Box(Modifier.padding(horizontal = 20.dp)) { VideoRow(video, onClick = { onOpen(video) }) }
+            }
+        } else {
+            Column(Modifier.fillMaxSize()) {
+                Spacer(Modifier.height(top + StageTopGap))
+                // Pinned: the video stays put while the details scroll beneath it (and tracks portrait fullscreen pull).
+                VideoStage(state, morph, fold, onCollapse, onFullscreen, interactive, portraitFsOffset = { portraitFsPull.value * portraitFsTravelPx })
+                // While collapsing the details are invisible anyway; leaving them out keeps them
+                // from catching touches meant for the mini-player.
+                if (!showDetails) Spacer(Modifier.weight(1f)) else
+                LazyColumn(
+                    modifier = Modifier
+                        .weight(1f)
+                        .nestedScroll(detailsPull)
+                        .graphicsLayer {
+                            // The details ride along under the video's bottom edge (so they never
+                            // overlap it mid-morph) and only fade in for the last stretch; live-slides with portrait pull.
+                            val p = morph.progress.value
+                            val fsFactor = (1f - portraitFsPull.value * 1.5f).coerceIn(0f, 1f)
+                            alpha = if (p < 1f && state.sheet.isPanel) 0f else ramp(p, DetailsFadeStart) * fsFactor
+                            val g = morph.geometry
+                            val morphY = if (g != null) lerpF(g.miniThumb.bottom - g.stage.bottom, 0f, p) else 0f
+                            translationY = morphY + portraitFsPull.value * portraitFsTravelPx
+                        },
+                    contentPadding = PaddingValues(bottom = bottomClearance + 16.dp),
+                ) {
+                    item(key = "info") {
+                        Column(Modifier.padding(horizontal = 20.dp)) {
+                            Spacer(Modifier.height(18.dp))
+                            Text(
+                                item.title,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .pressable(focusScale = 1.015f, focusShape = RoundedCornerShape(10.dp)) { state.sheet = PlayerSheet.Description },
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 19.sp,
+                                lineHeight = 23.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Spacer(Modifier.height(3.dp))
+                            val handle = Regex("/@([^/?]+)").find(item.channelUrl.orEmpty())?.groupValues?.getOrNull(1)?.let { "@$it" } ?: item.channel
+                            val stats = listOfNotNull(
+                                handle.takeIf { it.isNotBlank() },
+                                details?.likes?.takeIf { it > 0 }?.let { "${formatCount(it)} likes" },
+                                item.views.takeIf { it >= 0 }?.let { "${formatCount(it)} views" },
+                                item.uploaded?.ifBlank { null },
+                            ).joinToString("  ")
+                            val hasDescription = !details?.description.isNullOrBlank()
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(stats, modifier = Modifier.weight(1f), color = c.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                if (hasDescription) {
+                                    Text(
+                                        "See more",
+                                        modifier = Modifier.pressable(focusShape = RoundedCornerShape(8.dp)) { state.sheet = PlayerSheet.Description },
+                                        color = c.onSurface,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(14.dp))
+                            PlayerActions(state)
+                            if (details?.quality != "Downloaded") {
+                                CommentsCard(state.comments, onOpen = { state.sheet = PlayerSheet.Comments })
+                            }
+                            QueueCard(state, onOpen = { state.sheet = PlayerSheet.Queue })
+                        }
                     }
-                } else if (state.loading) {
-                    item(key = "loading") {
-                        Column(
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            repeat(3) {
-                                VideoRowSkeleton()
+                    val related = details?.related.orEmpty()
+                    if (related.isNotEmpty()) {
+                        item(key = "moreTitle") { SectionTitle("More videos") }
+                        items(related, key = { "rel-" + it.id }) { video ->
+                            Box(Modifier.padding(horizontal = 20.dp)) { VideoRow(video, onClick = { onOpen(video) }) }
+                        }
+                    } else if (state.loading) {
+                        item(key = "loading") {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                repeat(3) {
+                                    VideoRowSkeleton()
+                                }
                             }
                         }
                     }
@@ -483,7 +622,10 @@ fun PlayerScreen(
 @Composable
 fun panelRestTop(state: PlayerState): Dp {
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val screenW = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp
+    val config = androidx.compose.ui.platform.LocalConfiguration.current
+    val isLandscape = config.orientation == Configuration.ORIENTATION_LANDSCAPE || config.screenWidthDp > config.screenHeightDp
+    if (isLandscape) return top + 12.dp
+    val screenW = config.screenWidthDp.dp
     return top + StageTopGap + (screenW - StageSideGap * 2) / state.stageAspect + 10.dp
 }
 
@@ -795,6 +937,7 @@ private fun VideoStage(
     onFullscreen: () -> Unit,
     interactive: Boolean,
     portraitFsOffset: () -> Float = { 0f },
+    maxHeight: Dp = Dp.Unspecified,
 ) {
     val reduced = rememberReducedMotion()
     val scope = rememberCoroutineScope()
@@ -964,6 +1107,7 @@ private fun VideoStage(
             .zIndex(1f)
             .graphicsLayer { translationY = portraitFsOffset() }
             .padding(horizontal = StageSideGap)
+            .then(if (maxHeight != Dp.Unspecified) Modifier.widthIn(max = maxHeight * aspect) else Modifier)
             .fillMaxWidth()
             .aspectRatio(aspect)
             .then(stageSwipe)
@@ -1020,11 +1164,11 @@ private val FullscreenPull = 64.dp
  * the buttons, and the like sparks still have room to fly.
  */
 @Composable
-private fun PlayerActions(state: PlayerState) {
+private fun PlayerActions(state: PlayerState, compactSpacing: Boolean = false) {
     Row(
         Modifier
-            .padding(top = 14.dp)
-            .bleed(20.dp)
+            .padding(top = if (compactSpacing) 8.dp else 14.dp)
+            .bleed(if (compactSpacing) 8.dp else 20.dp)
             .horizontalScroll(rememberScrollState())
             .padding(horizontal = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -1038,11 +1182,12 @@ private fun PlayerActions(state: PlayerState) {
         Spacer(Modifier.width(6.dp))
         Row(
             Modifier
-                .size(36.dp)
-                .pressable(enabled = channelUrl != null, pressedScale = 0.96f) { channelUrl?.let(openChannel) },
+                .size(44.dp)
+                .pressable(enabled = channelUrl != null, pressedScale = 0.96f, focusShape = CircleShape) { channelUrl?.let(openChannel) },
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
         ) {
-            ChannelAvatar(details?.item?.avatar ?: item.avatar, item.channel, size = 32)
+            ChannelAvatar(details?.item?.avatar ?: item.avatar, item.channel, size = 34)
         }
         val subscribed = state.accountState?.subscribed == true
         val channelId = state.accountState?.channelId
@@ -1056,8 +1201,8 @@ private fun PlayerActions(state: PlayerState) {
             val allNotifications = Bells.isOn(bellChannel.id)
             Box(
                 Modifier
-                    .size(40.dp)
-                    .pressable(pressedScale = 0.92f) { toggleBell(bellChannel) }
+                    .size(44.dp)
+                    .pressable(pressedScale = 0.92f, focusShape = CircleShape) { toggleBell(bellChannel) }
                     .clip(CircleShape)
                     .background(colors.surfaceContainerHigh),
                 contentAlignment = Alignment.Center,
@@ -1075,9 +1220,9 @@ private fun PlayerActions(state: PlayerState) {
             val lightTheme = colors.surface.luminance() >= 0.5f
             Box(
                 Modifier
-                    .height(40.dp)
-                    .pressable(enabled = state.accountState != null, pressedScale = 0.97f) { state.toggleSubscribe() }
-                    .clip(RoundedCornerShape(20.dp))
+                    .height(44.dp)
+                    .pressable(enabled = state.accountState != null, pressedScale = 0.97f, focusShape = RoundedCornerShape(22.dp)) { state.toggleSubscribe() }
+                    .clip(RoundedCornerShape(22.dp))
                     .background(if (lightTheme) Color.Black else Color.White)
                     .padding(horizontal = 14.dp),
                 contentAlignment = Alignment.Center,
@@ -1093,7 +1238,7 @@ private fun PlayerActions(state: PlayerState) {
         }
         // Keep the avatar and Subscribe at the left, with the four action icons grouped toward
         // the right edge. The surrounding horizontal scroll still handles narrower windows.
-        Spacer(Modifier.width(42.dp))
+        Spacer(Modifier.width(if (compactSpacing) 12.dp else 42.dp))
         AccountActions(state)
     }
 }
@@ -1186,7 +1331,13 @@ internal fun PlayerMoreSheet(
         contentColor = MaterialTheme.colorScheme.onSurface,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
     ) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 12.dp)) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .focusGroup()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 22.dp, vertical = 12.dp),
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
                 Box(Modifier.size(52.dp).clip(RoundedCornerShape(12.dp))) { Thumbnail(item.thumbnail, Modifier.fillMaxSize(), radius = 0) }
                 Column(Modifier.padding(start = 12.dp).weight(1f)) {
@@ -1220,7 +1371,11 @@ internal fun PlayerMoreSheet(
 @Composable
 private fun PlayerMoreRow(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).pressable(onClick = onClick).padding(horizontal = 10.dp, vertical = 9.dp),
+        Modifier
+            .fillMaxWidth()
+            .pressable(focusScale = 1.015f, focusShape = RoundedCornerShape(16.dp), onClick = onClick)
+            .clip(RoundedCornerShape(16.dp))
+            .padding(horizontal = 10.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(icon, null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(22.dp))
@@ -1244,7 +1399,7 @@ private fun DrawableActionPill(
     Row(
         Modifier
             .height(44.dp)
-            .pressable(onClick = onClick)
+            .pressable(focusShape = shape, onClick = onClick)
             .clip(shape)
             .padding(horizontal = if (label == null) 8.dp else 14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1284,7 +1439,7 @@ private fun ActionPill(
         modifier = Modifier
             .squishOn(active)
             .height(44.dp)
-            .pressable(onClick = onClick)
+            .pressable(focusShape = shape, onClick = onClick)
             // background(shape), not clip: the like sparks may fly past the pill's edge.
             .background(bg, shape)
             .animateContentSize(spring(dampingRatio = 0.7f, stiffness = 500f))
@@ -1326,7 +1481,8 @@ fun MiniPlayer(state: PlayerState, onExpand: () -> Unit, modifier: Modifier = Mo
     Box(
         modifier = modifier
             .fillMaxSize()
-            .pressable(pressedScale = 0.98f, onClick = onExpand)
+            .focusGroup()
+            .pressable(pressedScale = 0.98f, focusScale = 1.03f, focusShape = shape, onClick = onExpand)
             .shadow(16.dp, shape, ambientColor = Color.Black.copy(alpha = 0.12f), spotColor = Color.Black.copy(alpha = 0.18f))
             .clip(shape)
             .background(Color.Black),
@@ -1355,9 +1511,15 @@ private fun MusicMiniControls(state: PlayerState) {
             Text(state.current?.title.orEmpty(), color = c.onSurface, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(state.current?.channel.orEmpty(), color = c.onSurfaceVariant, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Icon(Icons.Rounded.SkipPrevious, "Previous track", tint = c.onSurface, modifier = Modifier.size(23.dp).pressable { state.playPrevious() })
-        Icon(if (wantsPlayback) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (wantsPlayback) "Pause" else "Play", tint = c.onSurface, modifier = Modifier.size(30.dp).pressable { state.togglePlay() })
-        Icon(Icons.Rounded.SkipNext, "Next track", tint = c.onSurface, modifier = Modifier.size(23.dp).pressable { state.playNextUp() })
+        Box(Modifier.size(36.dp).pressable(focusShape = CircleShape) { state.playPrevious() }, contentAlignment = Alignment.Center) {
+            Icon(Icons.Rounded.SkipPrevious, "Previous track", tint = c.onSurface, modifier = Modifier.size(23.dp))
+        }
+        Box(Modifier.size(40.dp).pressable(focusShape = CircleShape) { state.togglePlay() }, contentAlignment = Alignment.Center) {
+            Icon(if (wantsPlayback) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (wantsPlayback) "Pause" else "Play", tint = c.onSurface, modifier = Modifier.size(30.dp))
+        }
+        Box(Modifier.size(36.dp).pressable(focusShape = CircleShape) { state.playNextUp() }, contentAlignment = Alignment.Center) {
+            Icon(Icons.Rounded.SkipNext, "Next track", tint = c.onSurface, modifier = Modifier.size(23.dp))
+        }
     }
     val progress = if (state.durationMs > 0L) (state.positionMs.toFloat() / state.durationMs).coerceIn(0f, 1f) else 0f
     Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(2.dp).background(c.surfaceVariant)) {
@@ -1412,7 +1574,7 @@ private fun MiniOverlayButton(
     onClick: () -> Unit,
 ) {
     Box(
-        modifier.size(38.dp).pressable(enabled = enabled, pressedScale = 0.9f, onClick = onClick)
+        modifier.size(40.dp).pressable(enabled = enabled, focusShape = CircleShape, pressedScale = 0.9f, onClick = onClick)
             .clip(CircleShape).background(Color.Black.copy(alpha = 0.64f)),
         contentAlignment = Alignment.Center,
     ) {

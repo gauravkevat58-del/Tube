@@ -9,7 +9,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -77,6 +76,7 @@ import com.github.itube.RoundedHeavy
 import com.github.itube.CachedMusicTrack
 import com.github.itube.MusicCacheManager
 import com.github.itube.pressable
+import com.github.itube.ui.tv.tvFocusRing
 import com.github.itube.withTop
 
 /**
@@ -134,7 +134,7 @@ fun CachedMusicScreen(
                     .padding(horizontal = 8.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onBack) {
+                IconButton(onClick = onBack, modifier = Modifier.tvFocusRing(CircleShape)) {
                     Icon(
                         Icons.AutoMirrored.Rounded.ArrowBack,
                         contentDescription = "Back",
@@ -166,7 +166,7 @@ fun CachedMusicScreen(
                     )
                 }
 
-                IconButton(onClick = { isSearchActive = !isSearchActive }) {
+                IconButton(onClick = { isSearchActive = !isSearchActive }, modifier = Modifier.tvFocusRing(CircleShape)) {
                     Icon(
                         Icons.Rounded.Search,
                         contentDescription = "Search cached songs",
@@ -175,7 +175,7 @@ fun CachedMusicScreen(
                 }
 
                 if (cachedList.isNotEmpty()) {
-                    IconButton(onClick = { showClearConfirmDialog = true }) {
+                    IconButton(onClick = { showClearConfirmDialog = true }, modifier = Modifier.tvFocusRing(CircleShape)) {
                         Icon(
                             Icons.Rounded.DeleteSweep,
                             contentDescription = "Clear all cached music",
@@ -198,14 +198,15 @@ fun CachedMusicScreen(
                     singleLine = true,
                     trailingIcon = {
                         if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { searchQuery = "" }) {
+                            IconButton(onClick = { searchQuery = "" }, modifier = Modifier.tvFocusRing(CircleShape)) {
                                 Icon(Icons.Rounded.Clear, "Clear search", modifier = Modifier.size(18.dp))
                             }
                         }
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                        .tvFocusRing(RoundedCornerShape(16.dp)),
                     shape = RoundedCornerShape(16.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = c.primary,
@@ -279,7 +280,7 @@ fun CachedMusicScreen(
                                         onOpenMusic(allMusicTracks.first(), allMusicTracks)
                                     }
                                 },
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.weight(1f).tvFocusRing(RoundedCornerShape(20.dp)),
                                 shape = RoundedCornerShape(20.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = c.primary,
@@ -298,7 +299,7 @@ fun CachedMusicScreen(
                                         onOpenMusic(shuffled.first(), shuffled)
                                     }
                                 },
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.weight(1f).tvFocusRing(RoundedCornerShape(20.dp)),
                                 shape = RoundedCornerShape(20.dp)
                             ) {
                                 Icon(Icons.Rounded.Shuffle, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -412,13 +413,14 @@ fun CachedMusicScreen(
                         showClearConfirmDialog = false
                         Toast.makeText(context, "Cached audio cleared", Toast.LENGTH_SHORT).show()
                     },
+                    modifier = Modifier.tvFocusRing(CircleShape),
                     colors = ButtonDefaults.buttonColors(containerColor = c.error, contentColor = c.onError)
                 ) {
                     Text("Clear All", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showClearConfirmDialog = false }) {
+                TextButton(onClick = { showClearConfirmDialog = false }, modifier = Modifier.tvFocusRing(CircleShape)) {
                     Text("Cancel")
                 }
             }
@@ -430,7 +432,6 @@ fun CachedMusicScreen(
  * Single row item for a cached music track with thumbnail, title, artists,
  * offline badge, file size, and duration.
  */
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun CachedSongRow(
     track: CachedMusicTrack,
@@ -444,11 +445,14 @@ private fun CachedSongRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .combinedClickable(
+            .padding(horizontal = 10.dp, vertical = 2.dp)
+            .pressable(
+                focusShape = RoundedCornerShape(14.dp),
+                focusScale = 1.015f,
                 onClick = onClick,
                 onLongClick = onLongClick
             )
-            .padding(horizontal = 16.dp, vertical = 7.dp),
+            .padding(horizontal = 6.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Thumbnail with Rounded Corners & Offline Indicator
@@ -537,7 +541,7 @@ private fun CachedSongRow(
         // More Options Button
         IconButton(
             onClick = onOptionsClick,
-            modifier = Modifier.size(36.dp)
+            modifier = Modifier.size(36.dp).tvFocusRing(CircleShape)
         ) {
             Icon(
                 Icons.Rounded.MoreVert,
@@ -680,7 +684,7 @@ private fun CachedOptionItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .pressable(onClick = onClick)
+            .pressable(focusShape = RoundedCornerShape(12.dp), focusScale = 1.015f, onClick = onClick)
             .padding(horizontal = 20.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

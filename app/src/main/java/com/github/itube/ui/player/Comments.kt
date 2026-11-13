@@ -3,6 +3,7 @@ package com.github.itube
 import android.util.Log
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusGroup
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
@@ -18,7 +19,9 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
+import com.github.itube.ui.tv.tvFocusRing
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
@@ -40,6 +43,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
@@ -303,7 +307,7 @@ fun CommentsCard(state: CommentsState, onOpen: () -> Unit) {
         modifier = Modifier
             .padding(top = 12.dp)
             .fillMaxWidth()
-            .pressable(enabled = state.comments.isNotEmpty() || (Account.signedIn && !state.disabled && !state.loading), pressedScale = 0.98f, onClick = onOpen)
+            .pressable(enabled = state.comments.isNotEmpty() || (Account.signedIn && !state.disabled && !state.loading), pressedScale = 0.98f, focusScale = 1.02f, focusShape = shape, onClick = onOpen)
             .clip(shape)
             .background(c.surfaceContainerLow)
             .padding(horizontal = 12.dp, vertical = 10.dp),
@@ -386,13 +390,15 @@ fun CommentsPanel(state: CommentsState, partialTop: Dp, onClose: () -> Unit) {
                 ) {
                     listOf("Top", "Topics", "Timed", "Newest").forEach { label ->
                         val selected = selectedSort == label
+                        val chipShape = RoundedCornerShape(14.dp)
                         Text(
                             label,
                             color = if (selected) c.onPrimary else c.onSurface,
                             fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.clip(RoundedCornerShape(14.dp))
+                            modifier = Modifier
+                                .pressable(focusShape = chipShape) { selectedSort = label }
+                                .clip(chipShape)
                                 .background(if (selected) c.onSurface else c.surfaceContainerHigh)
-                                .pressable { selectedSort = label }
                                 .padding(horizontal = 13.dp, vertical = 9.dp),
                         )
                     }
@@ -512,6 +518,7 @@ fun PlayerPanel(
         Column(
             Modifier
                 .align(Alignment.BottomCenter)
+                .widthIn(max = 680.dp)
                 .fillMaxWidth()
                 .height(with(density) { height.value.toDp() })
                 .graphicsLayer { translationY = slide.value * size.height }
@@ -520,6 +527,7 @@ fun PlayerPanel(
                 .background(containerColor)
                 // Swallow taps so nothing underneath reacts through the panel.
                 .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } }
+                .focusGroup()
                 .imePadding(),
         ) {
             // Handle + title: the drag area.
@@ -538,7 +546,7 @@ fun PlayerPanel(
                 Row(Modifier.padding(start = 20.dp, end = 8.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     title()
                     Spacer(Modifier.weight(1f))
-                    Box(Modifier.size(44.dp).pressable { close() }, contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(44.dp).pressable(focusShape = CircleShape) { close() }, contentAlignment = Alignment.Center) {
                         Icon(Icons.Rounded.Close, closeLabel, tint = c.onSurfaceVariant)
                     }
                 }
@@ -570,7 +578,7 @@ private fun Composer(state: CommentsState) {
         state.replyingTo?.let { target ->
             Row(Modifier.padding(start = 8.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Replying to ${target.displayName()}", color = c.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                Box(Modifier.size(28.dp).pressable { state.replyingTo = null }, contentAlignment = Alignment.Center) {
+                Box(Modifier.size(28.dp).pressable(focusShape = CircleShape) { state.replyingTo = null }, contentAlignment = Alignment.Center) {
                     Icon(Icons.Rounded.Close, "Cancel reply", tint = c.onSurfaceVariant, modifier = Modifier.size(16.dp))
                 }
             }
@@ -578,7 +586,11 @@ private fun Composer(state: CommentsState) {
         state.postError?.let { Text(it, color = c.error, fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp, bottom = 6.dp)) }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
-                Modifier.weight(1f).clip(RoundedCornerShape(24.dp)).background(c.surfaceContainerHighest)
+                Modifier
+                    .weight(1f)
+                    .tvFocusRing(RoundedCornerShape(24.dp), focusScale = 1.01f)
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(c.surfaceContainerHighest)
                     .padding(horizontal = 16.dp, vertical = 12.dp),
             ) {
                 if (state.draft.isEmpty()) {
@@ -593,9 +605,10 @@ private fun Composer(state: CommentsState) {
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send, capitalization = KeyboardCapitalization.Sentences),
                     keyboardActions = KeyboardActions(onSend = { send() }, onDone = { send() }),
                     modifier = Modifier.fillMaxWidth().focusRequester(requester).onPreviewKeyEvent { e ->
-                        if (e.key == Key.Enter || e.key == Key.NumPadEnter) {
-                            if (e.type == KeyEventType.KeyDown) send()
-                            true
+                        if (e.type == KeyEventType.KeyDown) when (e.key) {
+                            Key.Enter, Key.NumPadEnter -> { send(); true }
+                            Key.DirectionUp -> if (state.draft.isEmpty()) focus.moveFocus(FocusDirection.Up) else false
+                            else -> false
                         } else false
                     },
                 )
@@ -603,7 +616,7 @@ private fun Composer(state: CommentsState) {
             Spacer(Modifier.width(8.dp))
             val canSend = state.draft.isNotBlank() && !state.posting
             Box(
-                Modifier.size(46.dp).pressable(enabled = canSend) { send() }.clip(CircleShape)
+                Modifier.size(46.dp).pressable(enabled = canSend, focusShape = CircleShape) { send() }.clip(CircleShape)
                     .background(if (canSend) c.primary else c.surfaceContainerHighest),
                 contentAlignment = Alignment.Center,
             ) {
@@ -628,12 +641,17 @@ private fun CommentRow(comment: Comment, state: CommentsState, isReply: Boolean 
                 Text(comment.displayName(), fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                 comment.ago?.let { Text(it, color = c.onSurfaceVariant, fontSize = 12.sp, maxLines = 1) }
                 Box {
-                    Icon(
-                        Icons.Rounded.MoreVert,
-                        "Comment options",
-                        tint = c.onSurfaceVariant,
-                        modifier = Modifier.size(22.dp).pressable { moreOpen = true },
-                    )
+                    Box(
+                        Modifier.size(32.dp).pressable(focusShape = CircleShape) { moreOpen = true },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.Rounded.MoreVert,
+                            "Comment options",
+                            tint = c.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
                     androidx.compose.material3.DropdownMenu(
                         expanded = moreOpen,
                         onDismissRequest = { moreOpen = false },
@@ -669,8 +687,8 @@ private fun CommentRow(comment: Comment, state: CommentsState, isReply: Boolean 
                 val likeTint = if (isLiked) c.primary else c.onSurfaceVariant
                 Row(
                     Modifier
-                        .pressable(enabled = canLike) { state.toggleLike(comment) { state.postError = it } }
-                        .padding(vertical = 4.dp, horizontal = 2.dp),
+                        .pressable(enabled = canLike, focusShape = RoundedCornerShape(10.dp)) { state.toggleLike(comment) { state.postError = it } }
+                        .padding(vertical = 4.dp, horizontal = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(
@@ -692,8 +710,8 @@ private fun CommentRow(comment: Comment, state: CommentsState, isReply: Boolean 
                 val dislikeTint = if (isDisliked) c.primary else c.onSurfaceVariant
                 Box(
                     Modifier
-                        .pressable(enabled = canLike) { state.toggleDislike(comment) { state.postError = it } }
-                        .padding(vertical = 4.dp, horizontal = 2.dp),
+                        .pressable(enabled = canLike, focusShape = CircleShape) { state.toggleDislike(comment) { state.postError = it } }
+                        .padding(vertical = 4.dp, horizontal = 6.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
@@ -712,7 +730,7 @@ private fun CommentRow(comment: Comment, state: CommentsState, isReply: Boolean 
                 if (Account.signedIn && !comment.id.startsWith("local-")) {
                     Spacer(Modifier.width(16.dp))
                     Row(
-                        Modifier.pressable { state.startReply(comment) }.padding(vertical = 2.dp),
+                        Modifier.pressable(focusShape = RoundedCornerShape(10.dp)) { state.startReply(comment) }.padding(vertical = 4.dp, horizontal = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Icon(painterResource(R.drawable.ic_comment), null, tint = c.onSurfaceVariant, modifier = Modifier.size(14.dp))
@@ -727,8 +745,8 @@ private fun CommentRow(comment: Comment, state: CommentsState, isReply: Boolean 
                 Row(
                     modifier = Modifier
                         .padding(top = 6.dp)
-                        .pressable { if (open) state.hideReplies(comment) else state.loadReplies(comment) }
-                        .padding(vertical = 4.dp),
+                        .pressable(focusShape = RoundedCornerShape(10.dp)) { if (open) state.hideReplies(comment) else state.loadReplies(comment) }
+                        .padding(vertical = 4.dp, horizontal = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(

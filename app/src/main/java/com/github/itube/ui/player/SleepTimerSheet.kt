@@ -51,9 +51,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.itube.SleepTimerMode
 import com.github.itube.SleepTimerState
+import com.github.itube.pressable
 import com.github.itube.ui.components.TrackBlurPopup
 import com.github.itube.ui.components.popupContainerColor
 import com.github.itube.ui.components.popupScrimColor
+import com.github.itube.ui.tv.tvFocusRing
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -142,7 +144,7 @@ fun SleepTimerContent(
                 }
             }
 
-            IconButton(onClick = onDismiss) {
+            IconButton(onClick = onDismiss, modifier = Modifier.tvFocusRing(CircleShape)) {
                 Icon(Icons.Rounded.Close, contentDescription = "Close", tint = c.onSurfaceVariant)
             }
         }
@@ -189,6 +191,7 @@ fun SleepTimerContent(
                     Surface(
                         shape = RoundedCornerShape(10.dp),
                         color = c.error.copy(alpha = 0.14f),
+                        modifier = Modifier.tvFocusRing(RoundedCornerShape(10.dp)),
                         onClick = {
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                             SleepTimerState.stopTimer()
@@ -295,8 +298,8 @@ private fun SleepTimerOptionRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .pressable(pressedScale = 0.98f, focusScale = 1.015f, focusShape = RoundedCornerShape(14.dp), onClick = onClick)
             .clip(RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
