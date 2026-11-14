@@ -52,8 +52,8 @@ object Motion {
     const val MorphMs = 480
     /** Tap/back-initiated collapse. Gesture releases use PlayerMorph's spring instead. */
     const val CollapseMs = 380
-    /** Overlay controls hide after this long without a touch while playing. */
-    const val ControlsHideMs = 2_000L
+    /** Overlay controls hide after this long without interaction while playing. */
+    const val ControlsHideMs = 6_000L
 }
 
 /** True when animations are off system-wide; all motion collapses to instant switches. */

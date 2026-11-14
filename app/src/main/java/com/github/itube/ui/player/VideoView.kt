@@ -34,6 +34,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.focusGroup
@@ -211,11 +212,29 @@ fun VideoContent(
     var picturePan by remember(state.current?.id) { mutableStateOf(Offset.Zero) }
     var zoomTouchedAt by remember(state.current?.id) { mutableLongStateOf(0L) }
     var touchedAt by remember { mutableLongStateOf(0L) }
+    var openedByDpad by remember { mutableStateOf(false) }
+    var overlayHasFocus by remember { mutableStateOf(false) }
     fun touched() { touchedAt = System.nanoTime() }
     // Fullscreen's quality and speed pickers (OverlayDrop, GitHub #25 / #31): the controls stay up while one is open.
     var drop by remember { mutableStateOf<DropKind?>(null) }
-    LaunchedEffect(controlsVisible, state.isPlaying, touchedAt, drop) {
-        if (controlsVisible && state.isPlaying && drop == null) {
+    LaunchedEffect(controlsVisible) {
+        if (!controlsVisible) openedByDpad = false
+    }
+    LaunchedEffect(
+        controlsVisible,
+        state.isPlaying,
+        touchedAt,
+        drop,
+        moreOpen,
+        showDownload,
+        state.sheet,
+        overlayHasFocus,
+        openedByDpad,
+    ) {
+        if (controlsVisible && state.isPlaying &&
+            drop == null && !moreOpen && !showDownload && state.sheet == null &&
+            !(openedByDpad && overlayHasFocus)
+        ) {
             delay(Motion.ControlsHideMs)
             controlsVisible = false
         }
@@ -249,15 +268,26 @@ fun VideoContent(
         label = "seekPeek",
     )
 
-    LaunchedEffect(interactive) { if (!interactive) { controlsVisible = false; burstActive = false } }
+    LaunchedEffect(interactive) { if (!interactive) { controlsVisible = false; burstActive = false; openedByDpad = false } }
     LaunchedEffect(controlsVisible, fullscreen) { if (!controlsVisible || !fullscreen) drop = null }
+    val tvFocusRequester = remember { FocusRequester() }
+    val playFocusRequester = remember { FocusRequester() }
     BackHandler(enabled = drop != null) { drop = null }
     BackHandler(enabled = controlsVisible && fullscreen && drop == null && !moreOpen && !showDownload) {
         controlsVisible = false
+        openedByDpad = false
+        runCatching { tvFocusRequester.requestFocus() }
     }
     val currentInteractive by androidx.compose.runtime.rememberUpdatedState(interactive)
     val currentInactiveTap by androidx.compose.runtime.rememberUpdatedState(onInactiveTap)
-    fun toggleControls() { if (overlay) { controlsVisible = !controlsVisible; touched() } }
+    fun toggleControls() {
+        if (overlay) {
+            val next = !controlsVisible
+            if (next) openedByDpad = false
+            controlsVisible = next
+            touched()
+        }
+    }
     SideEffect { edge?.controlsShown = controlsVisible && interactive }
     // Scrubbing the bottom edge: the controls step aside for the landing frame, and the hide timer
     // starts over once it's let go.
@@ -275,14 +305,15 @@ fun VideoContent(
     val pip = LocalPictureInPicture.current
     val view = LocalView.current
     val isTv = LocalIsTv.current
-    val tvFocusRequester = remember { FocusRequester() }
-    val playFocusRequester = remember { FocusRequester() }
     LaunchedEffect(fullscreen, interactive, controlsVisible) {
         if (!interactive) return@LaunchedEffect
+        val isTvDevice = com.github.itube.ui.tv.TvHelper.isTvDevice(context)
         if (controlsVisible && overlay) {
-            delay(40)
-            runCatching { playFocusRequester.requestFocus() }
-        } else if (fullscreen) {
+            if (openedByDpad || isTvDevice) {
+                delay(40)
+                runCatching { playFocusRequester.requestFocus() }
+            }
+        } else if (fullscreen && (openedByDpad || isTvDevice)) {
             runCatching { tvFocusRequester.requestFocus() }
         }
     }
@@ -306,6 +337,7 @@ fun VideoContent(
                         android.view.KeyEvent.KEYCODE_ENTER,
                         android.view.KeyEvent.KEYCODE_NUMPAD_ENTER -> {
                             if (overlay && !controlsVisible) {
+                                openedByDpad = true
                                 controlsVisible = true
                                 touched()
                                 true
@@ -338,6 +370,7 @@ fun VideoContent(
                         android.view.KeyEvent.KEYCODE_DPAD_UP,
                         android.view.KeyEvent.KEYCODE_DPAD_DOWN -> {
                             if (overlay && !controlsVisible) {
+                                openedByDpad = true
                                 controlsVisible = true
                                 touched()
                                 true
@@ -345,6 +378,7 @@ fun VideoContent(
                         }
                         android.view.KeyEvent.KEYCODE_MENU -> {
                             if (interactive) {
+                                openedByDpad = true
                                 moreOpen = true
                                 touched()
                                 true
@@ -353,6 +387,8 @@ fun VideoContent(
                         android.view.KeyEvent.KEYCODE_BACK -> {
                             if (controlsVisible) {
                                 controlsVisible = false
+                                openedByDpad = false
+                                runCatching { tvFocusRequester.requestFocus() }
                                 true
                             } else {
                                 false
@@ -417,27 +453,9 @@ fun VideoContent(
             }
         }
     }) {
-        // Flow-style live ambient mode: a small frame is sampled from the decoded TextureView,
-        // enlarged and blurred behind the fitted picture.  It changes as the video changes.
-        var ambientFrame by remember(fullscreen) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
-        LaunchedEffect(fullscreen) {
-            if (!fullscreen) return@LaunchedEffect
-            while (true) {
-                ambientFrame = SharedVideoTexture.activeView
-                    ?.takeIf { it.isAvailable }
-                    ?.getBitmap(64, 36)
-                    ?.asImageBitmap()
-                delay(220)
-            }
-        }
+        // Static downsampled ambient backdrop avoids 220ms TextureView pixel readbacks and blur passes during playback.
         if (fullscreen) {
-            // Before the first decoded frame arrives, use this video's own artwork rather than
-            // a theme colour. Once available, the sampled video frame replaces it every 220ms.
-            ambientFrame?.let { frame ->
-                Image(bitmap = frame, contentDescription = null, contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().blur(34.dp)
-                        .graphicsLayer { scaleX = 1.18f; scaleY = 1.18f; alpha = 0.88f })
-            } ?: Thumbnail(
+            Thumbnail(
                 state.current?.thumbnail,
                 Modifier.fillMaxSize().blur(34.dp).graphicsLayer { scaleX = 1.18f; scaleY = 1.18f; alpha = 0.88f },
                 radius = 0,
@@ -561,7 +579,21 @@ fun VideoContent(
                 }
             }
         }
-        if (overlay) Box(Modifier.fillMaxSize().focusGroup().graphicsLayer { alpha = visibleAlpha * controlsAlpha() * (1f - scrubFade) }) {
+        if (overlay && (controlsVisible || visibleAlpha > 0.01f)) Box(
+            Modifier
+                .fillMaxSize()
+                .focusProperties { canFocus = controlsVisible }
+                .onFocusChanged { overlayHasFocus = it.hasFocus }
+                .onPreviewKeyEvent { ev ->
+                    if (ev.type == KeyEventType.KeyDown && controlsVisible) {
+                        openedByDpad = true
+                        touched()
+                    }
+                    false
+                }
+                .focusGroup()
+                .graphicsLayer { alpha = visibleAlpha * controlsAlpha() * (1f - scrubFade) }
+        ) {
             Box(
                 Modifier.fillMaxSize().background(
                     Brush.verticalGradient(
@@ -732,20 +764,11 @@ fun VideoContent(
                         Spacer(Modifier.height(6.dp))
                     }
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                            val shownMs = scrubPreview ?: state.positionMs
-                            Text(formatDuration(shownMs), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                            Text(
-                                " / " + formatDuration(state.durationMs),
-                                color = Color.White.copy(alpha = 0.72f), fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1,
-                            )
-                            state.chapterAt(shownMs)?.let {
-                                Text(
-                                    " · $it", color = Color.White.copy(alpha = 0.72f), fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                        }
+                        VideoTimeLabelRow(
+                            state = state,
+                            scrubPreview = scrubPreview,
+                            modifier = Modifier.weight(1f),
+                        )
                         state.askSegment?.let { segment ->
                             SkipSegmentPill(segment, enabled = true) { touched(); state.skipSegment(segment) }
                         }
@@ -759,20 +782,11 @@ fun VideoContent(
                         }
                     }
                     if (fullscreen) {
-                        Scrubber(
-                            segments = if (SponsorBlock.enabled) state.segments.filter { it.action != SponsorBlock.Action.Off } else emptyList(),
-                            positionMs = state.positionMs,
-                            bufferedMs = state.bufferedMs,
-                            durationMs = state.durationMs,
+                        VideoScrubberSlot(
+                            state = state,
                             enabled = enabled,
                             onPreview = { scrubPreview = it; touched() },
                             onSeek = { scrubPreview = null; state.seekTo(it); touched() },
-                            // As the portrait playback head draws it.
-                            track = Color.White.copy(alpha = 0.32f),
-                            buffered = Color.White.copy(alpha = 0.45f),
-                            played = MaterialTheme.colorScheme.primary,
-                            trackHeight = 3.dp,
-                            chapters = state.details?.chapters.orEmpty().map { it.startMs },
                         )
 
                         Spacer(Modifier.height(4.dp))
@@ -932,32 +946,79 @@ fun VideoContent(
                     }
                 }
                 if (fullscreen) {
-                    QualityDrop(state, drop == DropKind.Quality, dropAnchor, dropRoom, onClose = { drop = null })
-                    SpeedDrop(state, drop == DropKind.Speed, dropAnchor, dropRoom, onClose = { drop = null })
-                    CaptionsDrop(state, drop == DropKind.Captions, dropAnchor, dropRoom, onClose = { drop = null })
-                }
-                if (moreOpen) {
-                    PlayerMoreSheet(
-                        state = state,
-                        onDismiss = { moreOpen = false },
-                        onCopyLink = {
-                            state.current?.let { clipboard.setText(AnnotatedString("https://youtu.be/${it.id}")) }
-                            state.actionMessage = "Link copied"
-                            moreOpen = false
-                        },
-                        onDownload = {
-                            moreOpen = false
-                            showDownload = true
-                        }
-                    )
-                }
-                if (showDownload) {
-                    DownloadSheet(state, onDismiss = { showDownload = false })
+                    QualityDrop(state, drop == DropKind.Quality, dropAnchor, dropRoom, onClose = { drop = null; touched() })
+                    SpeedDrop(state, drop == DropKind.Speed, dropAnchor, dropRoom, onClose = { drop = null; touched() })
+                    CaptionsDrop(state, drop == DropKind.Captions, dropAnchor, dropRoom, onClose = { drop = null; touched() })
                 }
             }
         }
+        if (moreOpen) {
+            PlayerMoreSheet(
+                state = state,
+                onDismiss = { moreOpen = false; touched() },
+                onCopyLink = {
+                    state.current?.let { clipboard.setText(AnnotatedString("https://youtu.be/${it.id}")) }
+                    state.actionMessage = "Link copied"
+                    moreOpen = false
+                    touched()
+                },
+                onDownload = {
+                    moreOpen = false
+                    showDownload = true
+                    touched()
+                }
+            )
+        }
+        if (showDownload) {
+            DownloadSheet(state, onDismiss = { showDownload = false; touched() })
+        }
         if (edge != null) EdgeScrubPreview(state, edge)
     }
+}
+
+@Composable
+private fun VideoTimeLabelRow(
+    state: PlayerState,
+    scrubPreview: Long?,
+    modifier: Modifier = Modifier,
+) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        val shownMs = scrubPreview ?: state.positionMs
+        Text(formatDuration(shownMs), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+        Text(
+            " / " + formatDuration(state.durationMs),
+            color = Color.White.copy(alpha = 0.72f), fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+        )
+        state.chapterAt(shownMs)?.let {
+            Text(
+                " · $it", color = Color.White.copy(alpha = 0.72f), fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun VideoScrubberSlot(
+    state: PlayerState,
+    enabled: Boolean,
+    onPreview: (Long) -> Unit,
+    onSeek: (Long) -> Unit,
+) {
+    Scrubber(
+        segments = if (SponsorBlock.enabled) state.segments.filter { it.action != SponsorBlock.Action.Off } else emptyList(),
+        positionMs = state.positionMs,
+        bufferedMs = state.bufferedMs,
+        durationMs = state.durationMs,
+        enabled = enabled,
+        onPreview = onPreview,
+        onSeek = onSeek,
+        track = Color.White.copy(alpha = 0.32f),
+        buffered = Color.White.copy(alpha = 0.45f),
+        played = MaterialTheme.colorScheme.primary,
+        trackHeight = 3.dp,
+        chapters = state.details?.chapters.orEmpty().map { it.startMs },
+    )
 }
 
 /**

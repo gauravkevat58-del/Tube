@@ -145,6 +145,7 @@ import com.github.itube.ui.components.popupScrimColor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
@@ -157,6 +158,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import com.github.itube.ui.tv.LocalIsTv
+import com.github.itube.ui.tv.TvHelper
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
@@ -220,6 +227,12 @@ private fun lerpFloat(start: Float, stop: Float, fraction: Float): Float =
  * circular like/unlike/comment/share action buttons, expressive wavy seek bar,
  * quality indicator chip, playback controls, and bottom navigation.
  */
+@Stable
+private class MusicSeekUiState {
+    var isSeeking by mutableStateOf(false)
+    var seekPosition by mutableLongStateOf(0L)
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun IosStyledPlayer(
@@ -232,8 +245,6 @@ fun IosStyledPlayer(
     val track = MusicPlayerState.currentTrack ?: return
     val isPlaying = MusicPlayerState.isPlaying
     val isLoading = MusicPlayerState.isLoading
-    val position = MusicPlayerState.positionMs
-    val duration = MusicPlayerState.durationMs
     val isLiked = track.liked
     var isDisliked by remember(track.id) { mutableStateOf(false) }
 
@@ -442,17 +453,24 @@ fun IosStyledPlayer(
         }
     }
 
-    var isSeeking by remember { mutableStateOf(false) }
-    var seekPosition by remember { mutableLongStateOf(0L) }
+    val seekUi = remember { MusicSeekUiState() }
+    val isTvEnv = LocalIsTv.current || TvHelper.isTvDevice(context)
+    var controlsHaveFocus by remember { mutableStateOf(false) }
+    val playFocusRequester = remember { FocusRequester() }
+    var hasRequestedInitialFocus by remember { mutableStateOf(false) }
 
-    LaunchedEffect(isPanelOpen, lastLyricsInteractionTime, areLyricsControlsVisible, isSeeking) {
-        if (isPanelOpen && areLyricsControlsVisible && !isSeeking) {
-            delay(2000L)
+    LaunchedEffect(isPanelOpen, lastLyricsInteractionTime, areLyricsControlsVisible, seekUi.isSeeking, controlsHaveFocus, isTvEnv) {
+        if (isPanelOpen && areLyricsControlsVisible && !seekUi.isSeeking && !controlsHaveFocus && !isTvEnv) {
+            delay(5000L)
             areLyricsControlsVisible = false
         }
     }
 
-    val onLyricsInteraction: () -> Unit = {
+    val keepLyricsControlsVisible: () -> Unit = {
+        areLyricsControlsVisible = true
+        lastLyricsInteractionTime = System.currentTimeMillis()
+    }
+    val toggleLyricsControls: () -> Unit = {
         lastLyricsInteractionTime = System.currentTimeMillis()
         areLyricsControlsVisible = !areLyricsControlsVisible
     }
@@ -491,14 +509,30 @@ fun IosStyledPlayer(
         }
     }
 
-    val safeDuration = duration.coerceAtLeast(1L)
-    val displayPos = if (isSeeking) seekPosition else position
-    val remaining = (duration - displayPos).coerceAtLeast(0L)
-
     var commentsOpen by remember { mutableStateOf(false) }
     var optionsOpen by remember { mutableStateOf(false) }
     var showDownloadSheet by remember { mutableStateOf(false) }
     var showEqualizerSheet by remember { mutableStateOf(false) }
+    val hasModalOpen = commentsOpen || optionsOpen || showDownloadSheet || showEqualizerSheet || showQualitySheet
+
+    LaunchedEffect(MusicPlayerState.expanded, isTvEnv, hasModalOpen) {
+        if (MusicPlayerState.expanded && isTvEnv && !hasModalOpen) {
+            if (!hasRequestedInitialFocus) {
+                hasRequestedInitialFocus = true
+                delay(80L)
+                runCatching { playFocusRequester.requestFocus() }
+            }
+        } else if (!MusicPlayerState.expanded) {
+            hasRequestedInitialFocus = false
+        }
+    }
+
+    LaunchedEffect(isVideoFullscreen) {
+        if (MusicPlayerState.expanded && isTvEnv && !hasModalOpen) {
+            delay(60L)
+            runCatching { playFocusRequester.requestFocus() }
+        }
+    }
 
     var rootBoxCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
     var titleBottomPadding by remember { mutableStateOf(350.dp) }
@@ -811,20 +845,20 @@ fun IosStyledPlayer(
                         alpha = panelProgress
                     }
                     .pointerInput(Unit) {
-                        detectTapGestures { onLyricsInteraction() }
+                        detectTapGestures { toggleLyricsControls() }
                     }
             ) {
                 AirBeatsLyricsV2Content(
                     lyrics = MusicPlayerState.lyrics,
-                    sliderPositionProvider = { if (isSeeking) seekPosition else null },
+                    sliderPositionProvider = { if (seekUi.isSeeking) seekUi.seekPosition else null },
                     onSeek = { seekPos ->
-                        onLyricsInteraction()
+                        keepLyricsControlsVisible()
                         MusicPlayerState.seekTo(seekPos)
                         if (isVideoMode) {
                             videoPlayer.seekTo(seekPos)
                         }
                     },
-                    onUserInteraction = onLyricsInteraction,
+                    onUserInteraction = keepLyricsControlsVisible,
                     modifier = Modifier.fillMaxSize()
                 )
             }
@@ -843,7 +877,7 @@ fun IosStyledPlayer(
                         alpha = panelProgress
                     }
                     .pointerInput(Unit) {
-                        detectTapGestures { onLyricsInteraction() }
+                        detectTapGestures { toggleLyricsControls() }
                     }
             ) {
                 InPlayerQueueContent(
@@ -857,7 +891,7 @@ fun IosStyledPlayer(
                     onRemoveTrack = { idx: Int ->
                         MusicPlayerState.removeFromQueue(idx)
                     },
-                    onUserInteraction = onLyricsInteraction,
+                    onUserInteraction = keepLyricsControlsVisible,
                     onArtistClick = onArtistClick,
                     modifier = Modifier.fillMaxSize()
                 )
@@ -1028,7 +1062,7 @@ fun IosStyledPlayer(
 
                 IconButton(
                     onClick = {
-                        onLyricsInteraction()
+                        keepLyricsControlsVisible()
                         optionsOpen = true
                     },
                     modifier = Modifier
@@ -1084,7 +1118,7 @@ fun IosStyledPlayer(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier
-                            .clickable {
+                            .pressable(focusShape = RoundedCornerShape(6.dp)) {
                                 val aId = track.artistId?.takeIf { it.isNotBlank() } ?: track.artists
                                 onArtistClick?.invoke(MusicArtist(id = aId, name = track.artists))
                             }
@@ -1309,7 +1343,7 @@ fun IosStyledPlayer(
                     if (isLyricsOpen) {
                         AirBeatsLyricsV2Content(
                             lyrics = MusicPlayerState.lyrics,
-                            sliderPositionProvider = { if (isSeeking) seekPosition else null },
+                            sliderPositionProvider = { if (seekUi.isSeeking) seekUi.seekPosition else null },
                             onSeek = { seekPos ->
                                 MusicPlayerState.seekTo(seekPos)
                                 if (isVideoMode) videoPlayer.seekTo(seekPos)
@@ -1402,73 +1436,14 @@ fun IosStyledPlayer(
                         Spacer(Modifier.height(18.dp))
                     }
 
-                    // Wavy Seek Bar
-                    WavySlider(
-                        value = displayPos.toFloat(),
-                        onValueChange = {
-                            isSeeking = true
-                            seekPosition = it.toLong().coerceIn(0L, safeDuration)
-                            if (isVideoMode) videoPlayer.seekTo(seekPosition)
-                        },
-                        onValueChangeFinished = {
-                            MusicPlayerState.seekTo(seekPosition)
-                            if (isVideoMode) videoPlayer.seekTo(seekPosition)
-                            isSeeking = false
-                        },
-                        valueRange = 0f..safeDuration.toFloat(),
+                    MusicSeekSection(
+                        seekUi = seekUi,
                         isPlaying = isPlaying,
-                        activeTrackColor = Color.White,
-                        inactiveTrackColor = Color.White.copy(alpha = 0.25f),
-                        thumbColor = Color.White,
-                        modifier = Modifier.fillMaxWidth()
+                        isVideoMode = isVideoMode,
+                        videoPlayer = videoPlayer,
+                        onInteraction = keepLyricsControlsVisible,
+                        onOptionsClick = { optionsOpen = true },
                     )
-
-                    Spacer(Modifier.height(4.dp))
-
-                    // Time & Audio Quality Pill
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = formatTime(displayPos),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = Color.White.copy(alpha = 0.75f)
-                        )
-                        Box(
-                            modifier = Modifier
-                                .pressable(focusShape = RoundedCornerShape(14.dp)) { optionsOpen = true }
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(Color.White.copy(alpha = 0.12f))
-                                .padding(horizontal = 12.dp, vertical = 5.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Image(
-                                    painter = painterResource(R.drawable.graphic_eq),
-                                    contentDescription = null,
-                                    colorFilter = ColorFilter.tint(Color.White.copy(alpha = 0.85f)),
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Text(
-                                    text = buildAnnotatedString {
-                                        withStyle(SpanStyle(color = Color(0xFFFF1744))) { append("i") }
-                                        withStyle(SpanStyle(color = Color.White)) { append("Music • 128k") }
-                                    },
-                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium)
-                                )
-                            }
-                        }
-                        Text(
-                            text = "-${formatTime(remaining)}",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = Color.White.copy(alpha = 0.75f)
-                        )
-                    }
 
                     Spacer(Modifier.height(12.dp))
 
@@ -1492,6 +1467,7 @@ fun IosStyledPlayer(
                         Box(
                             modifier = Modifier
                                 .size(if (isPanelOpen) 58.dp else 68.dp)
+                                .focusRequester(playFocusRequester)
                                 .pressable(focusShape = CircleShape, focusScale = 1.08f) { MusicPlayerState.togglePlayPause() }
                                 .clip(CircleShape),
                             contentAlignment = Alignment.Center
@@ -1636,6 +1612,8 @@ fun IosStyledPlayer(
                     .navigationBarsPadding()
                     .padding(horizontal = 24.dp)
                     .padding(bottom = 18.dp)
+                    .focusProperties { canFocus = !isPanelOpen || areLyricsControlsVisible }
+                    .onFocusChanged { controlsHaveFocus = it.hasFocus }
                     .graphicsLayer {
                         translationY = controlsTranslationY
                         alpha = controlsAlpha
@@ -1715,7 +1693,7 @@ fun IosStyledPlayer(
                             isActive = isLiked,
                             contentDescription = "Like",
                             onClick = {
-                                onLyricsInteraction()
+                                keepLyricsControlsVisible()
                                 MusicPlayerState.toggleLike()
                             }
                         )
@@ -1725,7 +1703,7 @@ fun IosStyledPlayer(
                             isActive = isDisliked,
                             contentDescription = "Dislike",
                             onClick = {
-                                onLyricsInteraction()
+                                keepLyricsControlsVisible()
                                 isDisliked = !isDisliked
                             }
                         )
@@ -1735,7 +1713,7 @@ fun IosStyledPlayer(
                             isActive = commentsOpen,
                             contentDescription = "Comments",
                             onClick = {
-                                onLyricsInteraction()
+                                keepLyricsControlsVisible()
                                 commentsOpen = true
                             }
                         )
@@ -1745,7 +1723,7 @@ fun IosStyledPlayer(
                             isActive = false,
                             contentDescription = "Share",
                             onClick = {
-                                onLyricsInteraction()
+                                keepLyricsControlsVisible()
                                 val sendIntent = Intent(Intent.ACTION_SEND).apply {
                                     putExtra(Intent.EXTRA_TEXT, "https://youtu.be/${track.id}")
                                     type = "text/plain"
@@ -1758,84 +1736,17 @@ fun IosStyledPlayer(
 
                 Spacer(Modifier.height(if (isTvLandscape) 12.dp else 28.dp))
 
-                WavySlider(
-                    value = displayPos.toFloat(),
-                    onValueChange = {
-                        onLyricsInteraction()
-                        isSeeking = true
-                        seekPosition = it.toLong().coerceIn(0L, safeDuration)
-                        if (isVideoMode) {
-                            videoPlayer.seekTo(seekPosition)
-                        }
-                    },
-                    onValueChangeFinished = {
-                        onLyricsInteraction()
-                        MusicPlayerState.seekTo(seekPosition)
-                        if (isVideoMode) {
-                            videoPlayer.seekTo(seekPosition)
-                        }
-                        isSeeking = false
-                    },
-                    valueRange = 0f..safeDuration.toFloat(),
+                MusicSeekSection(
+                    seekUi = seekUi,
                     isPlaying = isPlaying,
-                    activeTrackColor = Color.White,
-                    inactiveTrackColor = Color.White.copy(alpha = 0.25f),
-                    thumbColor = Color.White,
-                    modifier = Modifier.fillMaxWidth()
+                    isVideoMode = isVideoMode,
+                    videoPlayer = videoPlayer,
+                    onInteraction = keepLyricsControlsVisible,
+                    onOptionsClick = {
+                        keepLyricsControlsVisible()
+                        optionsOpen = true
+                    },
                 )
-
-                Spacer(Modifier.height(4.dp))
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 2.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = formatTime(displayPos),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = Color.White.copy(alpha = 0.75f)
-                    )
-
-                    Box(
-                        modifier = Modifier
-                            .pressable(focusShape = RoundedCornerShape(14.dp)) {
-                                onLyricsInteraction()
-                                optionsOpen = true
-                            }
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(Color.White.copy(alpha = 0.12f))
-                            .padding(horizontal = 12.dp, vertical = 5.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Image(
-                                painter = painterResource(R.drawable.graphic_eq),
-                                contentDescription = null,
-                                colorFilter = ColorFilter.tint(Color.White.copy(alpha = 0.85f)),
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Text(
-                                text = buildAnnotatedString {
-                                    withStyle(SpanStyle(color = Color(0xFFFF1744))) { append("i") }
-                                    withStyle(SpanStyle(color = Color.White)) { append("Music • 128k") }
-                                },
-                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium)
-                            )
-                        }
-                    }
-
-                    Text(
-                        text = "-${formatTime(remaining)}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = Color.White.copy(alpha = 0.75f)
-                    )
-                }
 
                 Spacer(Modifier.height(if (isTvLandscape) 10.dp else 24.dp))
 
@@ -1846,7 +1757,7 @@ fun IosStyledPlayer(
                 ) {
                     IconButton(
                         onClick = {
-                            onLyricsInteraction()
+                            keepLyricsControlsVisible()
                             MusicPlayerState.skipPrevious()
                         },
                         modifier = Modifier.size(54.dp).tvFocusRing(CircleShape, borderColor = Color.White)
@@ -1862,8 +1773,9 @@ fun IosStyledPlayer(
                     Box(
                         modifier = Modifier
                             .size(if (isTvLandscape) 58.dp else 72.dp)
+                            .focusRequester(playFocusRequester)
                             .pressable(focusShape = CircleShape, focusScale = 1.08f) {
-                                onLyricsInteraction()
+                                keepLyricsControlsVisible()
                                 MusicPlayerState.togglePlayPause()
                             }
                             .clip(CircleShape),
@@ -1889,7 +1801,7 @@ fun IosStyledPlayer(
 
                     IconButton(
                         onClick = {
-                            onLyricsInteraction()
+                            keepLyricsControlsVisible()
                             MusicPlayerState.skipNext()
                         },
                         modifier = Modifier.size(54.dp).tvFocusRing(CircleShape, borderColor = Color.White)
@@ -1923,7 +1835,7 @@ fun IosStyledPlayer(
                             modifier = Modifier
                                 .size(46.dp)
                                 .pressable(focusShape = CircleShape, focusScale = 1.08f) {
-                                    onLyricsInteraction()
+                                    keepLyricsControlsVisible()
                                     if (MusicPlayerState.isVideoMode) {
                                         MusicPlayerState.isVideoMode = false
                                         MusicPlayerState.isVideoFullscreen = false
@@ -1953,7 +1865,7 @@ fun IosStyledPlayer(
                             modifier = Modifier
                                 .size(46.dp)
                                 .pressable(focusShape = CircleShape, focusScale = 1.08f) {
-                                    onLyricsInteraction()
+                                    keepLyricsControlsVisible()
                                     if (MusicPlayerState.isVideoMode) {
                                         MusicPlayerState.isVideoMode = false
                                         MusicPlayerState.isVideoFullscreen = false
@@ -1984,7 +1896,7 @@ fun IosStyledPlayer(
                         modifier = Modifier
                             .height(44.dp)
                             .pressable(focusShape = RoundedCornerShape(22.dp)) {
-                                onLyricsInteraction()
+                                keepLyricsControlsVisible()
                                 val videoId = track.id
                                 try {
                                     val ytIntent = Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube:$videoId")).apply {
@@ -2108,6 +2020,94 @@ fun IosStyledPlayer(
                 onDismiss = { showQualitySheet = false }
             )
         }
+    }
+}
+
+@Composable
+private fun MusicSeekSection(
+    seekUi: MusicSeekUiState,
+    isPlaying: Boolean,
+    isVideoMode: Boolean,
+    videoPlayer: ExoPlayer,
+    onInteraction: () -> Unit,
+    onOptionsClick: () -> Unit,
+) {
+    val position = MusicPlayerState.positionMs
+    val duration = MusicPlayerState.durationMs
+    val safeDuration = duration.coerceAtLeast(1L)
+    val displayPos = if (seekUi.isSeeking) seekUi.seekPosition else position
+    val remaining = (duration - displayPos).coerceAtLeast(0L)
+
+    WavySlider(
+        value = displayPos.toFloat(),
+        onValueChange = {
+            onInteraction()
+            seekUi.isSeeking = true
+            seekUi.seekPosition = it.toLong().coerceIn(0L, safeDuration)
+            if (isVideoMode) videoPlayer.seekTo(seekUi.seekPosition)
+        },
+        onValueChangeFinished = {
+            onInteraction()
+            MusicPlayerState.seekTo(seekUi.seekPosition)
+            if (isVideoMode) videoPlayer.seekTo(seekUi.seekPosition)
+            seekUi.isSeeking = false
+        },
+        valueRange = 0f..safeDuration.toFloat(),
+        isPlaying = isPlaying,
+        activeTrackColor = Color.White,
+        inactiveTrackColor = Color.White.copy(alpha = 0.25f),
+        thumbColor = Color.White,
+        modifier = Modifier.fillMaxWidth()
+    )
+
+    Spacer(Modifier.height(4.dp))
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = formatTime(displayPos),
+            style = MaterialTheme.typography.labelMedium,
+            color = Color.White.copy(alpha = 0.75f)
+        )
+
+        Box(
+            modifier = Modifier
+                .pressable(focusShape = RoundedCornerShape(14.dp), onClick = onOptionsClick)
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color.White.copy(alpha = 0.12f))
+                .padding(horizontal = 12.dp, vertical = 5.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.graphic_eq),
+                    contentDescription = null,
+                    colorFilter = ColorFilter.tint(Color.White.copy(alpha = 0.85f)),
+                    modifier = Modifier.size(14.dp)
+                )
+                Text(
+                    text = buildAnnotatedString {
+                        withStyle(SpanStyle(color = Color(0xFFFF1744))) { append("i") }
+                        withStyle(SpanStyle(color = Color.White)) { append("Music • 128k") }
+                    },
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium)
+                )
+            }
+        }
+
+        Text(
+            text = "-${formatTime(remaining)}",
+            style = MaterialTheme.typography.labelMedium,
+            color = Color.White.copy(alpha = 0.75f)
+        )
     }
 }
 
@@ -2627,6 +2627,7 @@ private fun VideoQualitySheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .focusGroup()
                 .padding(horizontal = 20.dp, vertical = 12.dp)
         ) {
             Text(

@@ -23,8 +23,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -242,6 +244,8 @@ fun MusicBottomSheet(
                     }
                     .sheetDragGesture(state, onDismiss)
                     .clip(shape)
+                    .focusProperties { canFocus = state.progress > 0.25f }
+                    .focusGroup()
                     .graphicsLayer {
                         alpha = ((state.progress - 0.02f) * 1.1f).coerceIn(0f, 1f)
                     },
@@ -263,6 +267,7 @@ fun MusicBottomSheet(
                     .offset {
                         IntOffset(x = 0, y = miniYOffset.roundToPx())
                     }
+                    .focusProperties { canFocus = state.progress <= 0.25f }
                     .graphicsLayer {
                         alpha = (1f - state.progress * 3.5f).coerceIn(0f, 1f)
                     },

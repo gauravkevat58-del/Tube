@@ -1,12 +1,7 @@
 package com.github.itube.ui.components
 
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -86,17 +81,8 @@ fun WavySlider(
 
     val currentProgress = if (isDragging) dragProgress else normalizedValue
 
-    // Infinite wave progression when active
-    val infiniteTransition = rememberInfiniteTransition(label = "wavySeekbarLoop")
-    val wavePhase by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2 * PI).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(1300, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "wavySeekbarPhase"
-    )
+    // Wave progression only runs when actively playing and not dragging.
+    var wavePhase by remember { mutableFloatStateOf(0f) }
 
     // Smoothly animate amplitude to 0 when paused or while dragging
     val animatedAmplitude by animateDpAsState(
@@ -105,6 +91,23 @@ fun WavySlider(
         label = "wavySeekbarAmplitude"
     )
     val animatedAmpPx = with(density) { animatedAmplitude.toPx() }
+    val animateWave = isPlaying && !isDragging && animatedAmpPx > 0.05f
+    androidx.compose.runtime.LaunchedEffect(animateWave) {
+        if (!animateWave) return@LaunchedEffect
+        var lastNs = 0L
+        val twoPi = (2.0 * PI).toFloat()
+        val speedRadPerSec = twoPi / 1.3f
+        while (true) {
+            androidx.compose.runtime.withFrameNanos { frameNs ->
+                if (lastNs != 0L) {
+                    val dtSec = ((frameNs - lastNs) / 1_000_000_000f).coerceIn(0f, 0.05f)
+                    wavePhase = (wavePhase + speedRadPerSec * dtSec) % twoPi
+                }
+                lastNs = frameNs
+            }
+        }
+    }
+    val wavePath = remember { Path() }
 
     // Thumb scale up slightly when scrubbing or D-pad focused
     val animatedThumbRadius by animateDpAsState(
@@ -208,7 +211,8 @@ fun WavySlider(
 
             // 2. Active Track (animated sine wave from start to thumbX)
             if (thumbX > 0f) {
-                val path = Path()
+                wavePath.reset()
+                val path = wavePath
                 path.moveTo(0f, centerY)
 
                 val step = 2.5f

@@ -556,6 +556,61 @@ private fun AboutITubeV2() {
             )
         }
         Spacer(Modifier.height(22.dp))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Maintainer", fontFamily = RoundedHeavy, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
+            Spacer(Modifier.width(9.dp))
+            Text("Active Build", color = c.primary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(22.dp))
+                .background(c.surfaceContainerHigh)
+                .border(1.dp, c.outlineVariant.copy(alpha = 0.55f), RoundedCornerShape(22.dp))
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(c.primaryContainer),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "G",
+                    color = c.onPrimaryContainer,
+                    fontFamily = RoundedHeavy,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 20.sp,
+                )
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "Customized & Maintained by Gaurav",
+                    fontFamily = RoundedHeavy,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 16.sp,
+                    color = c.onSurface,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    "Android TV optimization, remote navigation & release maintenance",
+                    color = c.onSurfaceVariant,
+                    fontSize = 12.5.sp,
+                )
+            }
+        }
+        Spacer(Modifier.height(18.dp))
+        Text(
+            "Open-source project based on iTube · Licensed under GNU GPLv3",
+            color = c.onSurfaceVariant,
+            fontSize = 12.sp,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(8.dp))
         Text("GitHub · d0x-dev/iTube", color = c.primary, fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.pressable(focusShape = CircleShape) { uri.openUri("https://github.com/d0x-dev/iTube") }.padding(horizontal = 12.dp, vertical = 6.dp))
     }
     if (showNotes && release != null) UpdateNotesSheet(release, onDismiss = { showNotes = false })

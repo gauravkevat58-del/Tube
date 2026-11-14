@@ -847,7 +847,15 @@ class PlayerState(private val scope: CoroutineScope) {
 
     fun close() {
         loadJob?.cancel()
-        controller?.run { stop(); clearMediaItems() }
+        pendingStart = null
+        pendingPlaylist = null
+        pendingOffline = null
+        controller?.run {
+            pause()
+            stop()
+            clearMediaItems()
+        }
+        SavedSession.save(emptyList())
         queue = emptyList()
         expanded = false
         fullscreen = false
@@ -857,6 +865,12 @@ class PlayerState(private val scope: CoroutineScope) {
         captions.clear()
         error = null
         loading = false
+        isPlaying = false
+        isBuffering = false
+        holdingFast = false
+        positionMs = 0L
+        durationMs = 0L
+        bufferedMs = 0L
     }
 
     /**

@@ -885,16 +885,22 @@ internal fun AirBeatsLyricsV2Content(
     var currentPositionMs by remember { mutableLongStateOf(0L) }
     var currentLineIndex by remember { mutableIntStateOf(0) }
 
-    // 60fps frame-accurate position loop
-    LaunchedEffect(entriesWithWords, isSynced) {
-        if (!isSynced || entriesWithWords.isEmpty()) return@LaunchedEffect
-        while (isActive) {
-            val sliderPos = sliderPositionProvider()
-            val pos = sliderPos ?: MusicPlayerState.positionMs
+    val isPlaying = MusicPlayerState.isPlaying
+    val sliderPos = sliderPositionProvider()
+    val statePos = MusicPlayerState.positionMs
 
+    // Sync immediately on seek/pause/track updates; run smooth loop only while playing or scrubbing.
+    LaunchedEffect(entriesWithWords, isSynced, isPlaying, sliderPos != null, statePos) {
+        if (!isSynced || entriesWithWords.isEmpty()) return@LaunchedEffect
+        val initialPos = sliderPos ?: statePos
+        currentPositionMs = initialPos
+        currentLineIndex = findCurrentLineIndex(entriesWithWords, initialPos)
+        if (!isPlaying && sliderPos == null) return@LaunchedEffect
+        while (isActive) {
+            val pos = sliderPositionProvider() ?: MusicPlayerState.positionMs
             currentPositionMs = pos
-            currentLineIndex = findCurrentLineIndex(entriesWithWords, currentPositionMs)
-            delay(16L) // ~60fps
+            currentLineIndex = findCurrentLineIndex(entriesWithWords, pos)
+            delay(33L)
         }
     }
 

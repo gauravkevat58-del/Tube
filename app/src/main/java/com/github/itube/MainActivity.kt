@@ -82,8 +82,12 @@ import androidx.compose.material.icons.rounded.Subscriptions
 import androidx.compose.material.icons.rounded.VideoLibrary
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.ArrowForward
+import androidx.compose.material.icons.automirrored.rounded.ExitToApp
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -101,6 +105,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -112,10 +120,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.window.Dialog
 import kotlin.math.roundToInt
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.launch
@@ -133,7 +144,9 @@ import com.github.itube.ui.player.LyricsV2Screen
 import com.github.itube.ui.player.MusicQueueSheet
 import com.github.itube.ui.components.EqualizerSheet
 import com.github.itube.ui.player.SleepTimerSheet
+import com.github.itube.ui.tv.TvHelper
 import com.github.itube.ui.tv.TvNavRail
+import com.github.itube.ui.tv.tvFocusRing
 
 class MainActivity : ComponentActivity() {
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
@@ -440,7 +453,10 @@ fun AirStreamApp() {
 
     // Fullscreen is whenever the open player is shown in landscape (rotation or button).
     val activity = LocalContext.current as Activity
+    val isTvDevice = remember(activity) { TvHelper.isTvDevice(activity) }
     val orientation = rememberOrientationController(activity as ComponentActivity)
+    val tvFocusBridge = remember { com.github.itube.ui.tv.TvFocusBridge() }
+    var showExitDialog by remember { mutableStateOf(false) }
 
     fun openVideo(v: VideoItem) {
         player.open(v)
@@ -467,7 +483,10 @@ fun AirStreamApp() {
     // Pulling down from the details area always enters Flow-style portrait fullscreen.
     fun enterPortraitFullscreen() = orientation.enterFullscreen(vertical = true)
 
-    BackHandler(enabled = player.expanded) { player.expanded = false }
+    BackHandler(enabled = player.expanded && player.sheet == null && player.playlistTarget == null) {
+        player.close()
+        if (isTv) tvFocusBridge.focusContent()
+    }
     BackHandler(enabled = !player.expanded && tab != Tab.Home && openPlaylist == null) { tab = if (tab == Tab.Shorts) shortsFrom else Tab.Home }
     BackHandler(enabled = !player.expanded && openPlaylist != null) { openPlaylist = null }
     BackHandler(enabled = !player.expanded && downloadsOpen) { downloadsOpen = false }
@@ -481,8 +500,15 @@ fun AirStreamApp() {
     BackHandler(enabled = !player.expanded && cachedMusicOpen) { cachedMusicOpen = false }
     BackHandler(enabled = !player.expanded && likedMusicOpen) { likedMusicOpen = false }
     BackHandler(enabled = tab == Tab.Shorts && shorts.commentsOpen) { shorts.commentsOpen = false }
-    // Registered last so it wins: in fullscreen, Back returns to the portrait player first.
-    BackHandler(enabled = showFullscreen) { orientation.exitFullscreen() }
+    // Registered last so it wins: in fullscreen on phone, Back returns to portrait first (which then
+    // stops and closes on the next Back); on Android TV, leaving the video player stops playback and closes.
+    BackHandler(enabled = showFullscreen && player.sheet == null && player.playlistTarget == null) {
+        orientation.exitFullscreen()
+        if (isTvDevice) {
+            player.close()
+            tvFocusBridge.focusContent()
+        }
+    }
 
     // The open player's bar (PlayerBar.kt): its tools card / quality list close on Back, on a
     // tap anywhere else, and whenever the player stops being the open portrait page.
@@ -603,7 +629,79 @@ fun AirStreamApp() {
         val sharedSurface = remember(player) {
             androidx.compose.runtime.movableContentOf { m: Modifier -> VideoSurface(player.controller, m) }
         }
-        val tvFocusBridge = remember { com.github.itube.ui.tv.TvFocusBridge() }
+        val musicMiniBottom = stackBottom + (if (isTv) 12.dp else NavHeight + 8.dp)
+        val musicCollapsedBound = musicMiniBottom + 66.dp
+        val musicExpandedBound = with(density) { rootConstraints.maxHeight.toDp() }
+        val musicSheetState = rememberBottomSheetState(
+            dismissedBound = 0.dp,
+            expandedBound = musicExpandedBound,
+            collapsedBound = musicCollapsedBound,
+            initialAnchor = when {
+                MusicPlayerState.currentTrack == null -> BottomSheetDismissedAnchor
+                MusicPlayerState.expanded -> BottomSheetExpandedAnchor
+                else -> BottomSheetCollapsedAnchor
+            }
+        )
+        LaunchedEffect(MusicPlayerState.expanded) {
+            if (MusicPlayerState.expanded && !musicSheetState.isExpanded) {
+                musicSheetState.expandSoft()
+            } else if (!MusicPlayerState.expanded && musicSheetState.isExpanded) {
+                musicSheetState.collapseSoft()
+            }
+        }
+        LaunchedEffect(musicSheetState.isExpanded) {
+            MusicPlayerState.expanded = musicSheetState.isExpanded
+        }
+        LaunchedEffect(MusicPlayerState.currentTrack?.id) {
+            if (MusicPlayerState.currentTrack != null) {
+                if (MusicPlayerState.expanded) musicSheetState.expandSoft() else musicSheetState.collapseSoft()
+            } else {
+                musicSheetState.dismiss()
+            }
+        }
+        val musicPlayerOpen = MusicPlayerState.currentTrack != null &&
+            tab != Tab.Shorts &&
+            !playerOpen &&
+            (MusicPlayerState.expanded || musicSheetState.progress > 0.25f)
+        var wasMusicPlayerOpen by remember { mutableStateOf(false) }
+        LaunchedEffect(musicPlayerOpen, isTv) {
+            if (wasMusicPlayerOpen && !musicPlayerOpen && isTv && !playerOpen && !showFullscreen && !showExitDialog) {
+                kotlinx.coroutines.delay(80)
+                if (!tvFocusBridge.focusContent()) {
+                    tvFocusBridge.focusRail()
+                }
+            }
+            wasMusicPlayerOpen = musicPlayerOpen
+        }
+        val isAtRootHome = tab == Tab.Home &&
+            !player.expanded &&
+            !showFullscreen &&
+            !MusicPlayerState.expanded &&
+            !musicPlayerOpen &&
+            (MusicPlayerState.currentTrack == null || musicSheetState.isCollapsed || musicSheetState.isDismissed) &&
+            openPlaylist == null &&
+            !downloadsOpen &&
+            !historyOpen &&
+            openChannel == null &&
+            openPublicCollection == null &&
+            openMusicArtist == null &&
+            openMusicPlaylist == null &&
+            !openMoodsAndGenres &&
+            !cachedMusicOpen &&
+            !likedMusicOpen &&
+            !signingIn &&
+            !accountSheet &&
+            optionsFor == null &&
+            playlistOptionsFor == null &&
+            collectionOptionsFor == null &&
+            player.playlistTarget == null &&
+            player.sheet == null &&
+            !playerBar.isOpen &&
+            CrashReports.pendingReport == null &&
+            !(automaticUpdateNotes && availableUpdate != null) &&
+            !showExitDialog
+        BackHandler(enabled = isAtRootHome) { showExitDialog = true }
+
         val activeTvRoute = when {
             likedMusicOpen -> "overlay:likedMusic"
             cachedMusicOpen -> "overlay:cachedMusic"
@@ -639,6 +737,17 @@ fun AirStreamApp() {
             modifier = Modifier
                 .fillMaxSize()
                 .then(if (popupBlurRadius > 0.dp) Modifier.blur(popupBlurRadius) else Modifier),
+        ) {
+        val backgroundInteractive = !musicPlayerOpen &&
+            !playerOpen &&
+            !showFullscreen &&
+            !showExitDialog &&
+            !accountSheet &&
+            !signingIn
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .focusProperties { canFocus = backgroundInteractive }
         ) {
         AnimatedContent(
             targetState = tab,
@@ -1089,6 +1198,7 @@ fun AirStreamApp() {
                 }
             }
         }
+        }
 
         // The player morphs out of (and back into) the mini-player; see PlayerMorph.
         if (showPlayer && !showFullscreen) {
@@ -1124,45 +1234,6 @@ fun AirStreamApp() {
                 },
             )
         }
-        // ── Dedicated Pop-up Based Music Player (AirBeats BottomSheet) ──
-        val musicMiniBottom = stackBottom + (if (isTv) 12.dp else NavHeight + 8.dp)
-        val musicCollapsedBound = musicMiniBottom + 66.dp
-        val musicExpandedBound = with(density) { rootConstraints.maxHeight.toDp() }
-
-        val musicSheetState = rememberBottomSheetState(
-            dismissedBound = 0.dp,
-            expandedBound = musicExpandedBound,
-            collapsedBound = musicCollapsedBound,
-            initialAnchor = when {
-                MusicPlayerState.currentTrack == null -> BottomSheetDismissedAnchor
-                MusicPlayerState.expanded -> BottomSheetExpandedAnchor
-                else -> BottomSheetCollapsedAnchor
-            }
-        )
-
-        // Sync MusicPlayerState.expanded with musicSheetState
-        LaunchedEffect(MusicPlayerState.expanded) {
-            if (MusicPlayerState.expanded && !musicSheetState.isExpanded) {
-                musicSheetState.expandSoft()
-            } else if (!MusicPlayerState.expanded && musicSheetState.isExpanded) {
-                musicSheetState.collapseSoft()
-            }
-        }
-
-        // When user drags / expands / collapses via gesture, update MusicPlayerState.expanded
-        LaunchedEffect(musicSheetState.isExpanded) {
-            MusicPlayerState.expanded = musicSheetState.isExpanded
-        }
-
-        // When a new track starts playing, ensure the sheet expands/collapses properly
-        LaunchedEffect(MusicPlayerState.currentTrack?.id) {
-            if (MusicPlayerState.currentTrack != null) {
-                if (MusicPlayerState.expanded) musicSheetState.expandSoft() else musicSheetState.collapseSoft()
-            } else {
-                musicSheetState.dismiss()
-            }
-        }
-
         // ── Dedicated Pop-up Based Music Player ──
         if (MusicPlayerState.currentTrack != null && tab != Tab.Shorts && !playerOpen) {
             MusicBottomSheet(
@@ -1272,7 +1343,10 @@ fun AirStreamApp() {
                         }
                     },
                     onAccount = { accountSheet = true },
-                    modifier = Modifier.align(Alignment.CenterStart),
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .focusProperties { canFocus = !musicPlayerOpen && !showExitDialog && !accountSheet && !signingIn }
+                        .graphicsLayer { alpha = if (musicPlayerOpen) 0f else 1f },
                 )
             }
         }
@@ -1420,6 +1494,110 @@ fun AirStreamApp() {
         CrashReports.pendingReport?.let { report ->
             CrashReportDialog(report, onDismiss = CrashReports::dismiss)
         }
+        if (showExitDialog) {
+            ExitAppDialog(
+                onCancel = { showExitDialog = false },
+                onConfirmExit = {
+                    showExitDialog = false
+                    player.close()
+                    MusicPlayerState.close()
+                    shorts.leave()
+                    activity.stopService(Intent(activity, PlaybackService::class.java))
+                    activity.stopService(Intent(activity, MusicPlaybackService::class.java))
+                    activity.finishAndRemoveTask()
+                },
+            )
+        }
+        }
+    }
+}
+
+@Composable
+private fun ExitAppDialog(
+    onCancel: () -> Unit,
+    onConfirmExit: () -> Unit,
+) {
+    val c = MaterialTheme.colorScheme
+    val cancelFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(50)
+        runCatching { cancelFocusRequester.requestFocus() }
+    }
+    Dialog(onDismissRequest = onCancel) {
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = c.surfaceContainerHigh,
+            tonalElevation = 8.dp,
+            border = androidx.compose.foundation.BorderStroke(1.dp, c.outlineVariant.copy(alpha = 0.55f)),
+            modifier = Modifier
+                .widthIn(min = 280.dp, max = 380.dp)
+                .focusGroup(),
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 22.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(c.errorContainer),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.ExitToApp,
+                        contentDescription = null,
+                        tint = c.onErrorContainer,
+                        modifier = Modifier.size(26.dp),
+                    )
+                }
+                Text(
+                    text = "Exit iTube?",
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                    color = c.onSurface,
+                    textAlign = TextAlign.Center,
+                )
+                Text(
+                    text = "Active playback will stop and the app will close.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = c.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    OutlinedButton(
+                        onClick = onCancel,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .testTag("exit_dialog_cancel_button")
+                            .focusRequester(cancelFocusRequester)
+                            .tvFocusRing(RoundedCornerShape(14.dp), focusScale = 1.03f),
+                    ) {
+                        Text("Cancel", fontWeight = FontWeight.SemiBold)
+                    }
+                    Button(
+                        onClick = onConfirmExit,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = c.error,
+                            contentColor = c.onError,
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .testTag("exit_dialog_confirm_button")
+                            .tvFocusRing(RoundedCornerShape(14.dp), focusScale = 1.03f),
+                    ) {
+                        Text("Exit", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
         }
     }
 }

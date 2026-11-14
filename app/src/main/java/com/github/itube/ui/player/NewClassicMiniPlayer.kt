@@ -94,21 +94,18 @@ fun NewClassicMiniPlayer(
 ) {
     val track = MusicPlayerState.currentTrack ?: return
     val isPlaying = MusicPlayerState.isPlaying
-    val position = MusicPlayerState.positionMs
-    val duration = MusicPlayerState.durationMs
+    val isExpanded = MusicPlayerState.expanded
     val coroutineScope = rememberCoroutineScope()
     val layoutDirection = LocalLayoutDirection.current
-
-    val progress = if (duration > 0) (position.toFloat() / duration.toFloat()).coerceIn(0f, 1f) else 0f
 
     val offsetXAnimatable = remember { Animatable(0f) }
     var dragStartTime by remember { mutableLongStateOf(0L) }
     var totalDragDistance by remember { mutableFloatStateOf(0f) }
 
-    // Rotating cookie play/pause button animation (smooth rotation while playing)
+    // Rotating cookie play/pause button animation (smooth rotation while playing and visible)
     val cookieRotation = remember { Animatable(0f) }
-    LaunchedEffect(isPlaying) {
-        if (isPlaying) {
+    LaunchedEffect(isPlaying, isExpanded) {
+        if (isPlaying && !isExpanded) {
             while (isActive) {
                 val current = cookieRotation.value % 360f
                 cookieRotation.snapTo(current)
@@ -207,18 +204,12 @@ fun NewClassicMiniPlayer(
                     .fillMaxSize()
                     .padding(horizontal = 8.dp, vertical = 6.dp),
             ) {
-                // 1. Artwork with progress ring
+                // 1. Artwork with isolated progress ring (prevents 200ms root recompositions)
                 Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier.size(48.dp)
                 ) {
-                    CircularProgressIndicator(
-                        progress = { progress },
-                        modifier = Modifier.fillMaxSize(),
-                        color = Color(0xFFFF0000), // Iconic red progress accent matching iMusic tag
-                        trackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f),
-                        strokeWidth = 2.5.dp
-                    )
+                    MiniPlayerProgressRing(modifier = Modifier.fillMaxSize())
 
                     AsyncImage(
                         model = track.thumbnailUrl?.highQualityThumbnail(),
@@ -387,4 +378,18 @@ fun NewClassicMiniPlayer(
             }
         }
     }
+}
+
+@Composable
+private fun MiniPlayerProgressRing(modifier: Modifier = Modifier) {
+    val position = MusicPlayerState.positionMs
+    val duration = MusicPlayerState.durationMs
+    val progress = if (duration > 0) (position.toFloat() / duration.toFloat()).coerceIn(0f, 1f) else 0f
+    CircularProgressIndicator(
+        progress = { progress },
+        modifier = modifier,
+        color = Color(0xFFFF0000),
+        trackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f),
+        strokeWidth = 2.5.dp
+    )
 }
