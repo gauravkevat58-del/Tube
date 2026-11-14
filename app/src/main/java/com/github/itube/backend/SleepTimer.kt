@@ -15,7 +15,7 @@ sealed class SleepTimerMode {
 }
 
 /**
- * Global sleep timer state machine for both Video Player and iMusic Player.
+ * Global sleep timer state machine for the video player.
  */
 object SleepTimerState {
     var mode by mutableStateOf<SleepTimerMode>(SleepTimerMode.Off)
@@ -34,12 +34,6 @@ object SleepTimerState {
     fun labelForVideo(): String = when (mode) {
         is SleepTimerMode.Off -> "Off"
         is SleepTimerMode.EndOfMedia -> "At end of video"
-        is SleepTimerMode.Timed -> formatRemaining(remainingSeconds)
-    }
-
-    fun labelForMusic(): String = when (mode) {
-        is SleepTimerMode.Off -> "Off"
-        is SleepTimerMode.EndOfMedia -> "At end of song"
         is SleepTimerMode.Timed -> formatRemaining(remainingSeconds)
     }
 
@@ -115,10 +109,6 @@ object SleepTimerState {
 
     fun triggerPlaybackStop() {
         stopTimer()
-        try {
-            MusicPlayerState.pause()
-            MusicPlayerState.companionVideoPlayer?.pause()
-        } catch (_: Exception) {}
         onTimerExpired?.invoke()
     }
 

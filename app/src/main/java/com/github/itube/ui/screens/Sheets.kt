@@ -45,7 +45,7 @@ import androidx.compose.material.icons.rounded.ClearAll
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.Headphones
+import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material.icons.rounded.PlaylistPlay
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.WatchLater
@@ -117,6 +117,7 @@ fun VideoOptionsSheet(
     video: VideoItem,
     player: PlayerState,
     onDismiss: () -> Unit,
+    onOpenChannel: ((String) -> Unit)? = null,
     onRemoveFromPlaylist: (() -> Unit)? = null,
 ) {
     TrackBlurPopup()
@@ -137,27 +138,15 @@ fun VideoOptionsSheet(
                 Text(video.channel, color = c.onSurfaceVariant, fontSize = 13.sp, maxLines = 1)
             }
         }
-        OptionRow(Icons.Rounded.Headphones, "Play in iMusic") {
-            player.controller?.pause()
-            player.expanded = false
-            val track = MusicTrack(
-                id = video.id,
-                title = video.title,
-                artists = video.channel,
-                artistId = video.channelUrl,
-                thumbnailUrl = video.thumbnail,
-                durationSec = video.durationSec,
-                isVideo = false
-            )
-            MusicPlayerState.isVideoMode = false
-            MusicPlayerState.isVideoFullscreen = false
-            MusicPlayerState.videoFullscreenZoomMode = 0
-            MusicPlayerState.play(track)
-            MusicPlayerState.expanded = true
-            onDismiss()
-        }
         OptionRow(Icons.Rounded.PlaylistPlay, "Play next") { player.playNext(video); onDismiss() }
         OptionRow(Icons.AutoMirrored.Rounded.PlaylistAdd, "Add to queue") { player.addToQueue(video); onDismiss() }
+        val channelUrl = video.channelUrl
+        if (onOpenChannel != null && !channelUrl.isNullOrBlank()) {
+            OptionRow(Icons.Rounded.AccountCircle, "Go to channel") {
+                onDismiss()
+                onOpenChannel(channelUrl)
+            }
+        }
         if (Account.signedIn) {
             OptionRow(Icons.Rounded.WatchLater, "Save to Watch later") { player.saveToWatchLater(video); onDismiss() }
             OptionRow(Icons.Rounded.LibraryAdd, "Save to playlist") { onDismiss(); player.openPlaylists(video) }

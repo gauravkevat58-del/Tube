@@ -2,9 +2,21 @@ package com.github.itube
 
 import android.app.ActivityManager
 import android.app.PendingIntent
+import android.content.ContentProvider
+import android.content.ContentResolver
+import android.content.ContentValues
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
+import android.content.pm.ProviderInfo
+import android.content.res.AssetFileDescriptor
+import android.database.Cursor
+import android.database.MatrixCursor
 import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.os.CancellationSignal
+import android.os.ParcelFileDescriptor
 import android.util.Log
 import android.os.Handler
 import android.os.Looper
@@ -137,8 +149,7 @@ class PlaybackService : MediaSessionService() {
         if (player.audioSessionId > 0) {
             com.github.itube.backend.EqualizerManager.bindAudioSession(player.audioSessionId)
         }
-        session = MediaSession.Builder(this, player)
-            // Must differ from MusicPlaybackService when video and music sessions overlap.
+        session = MediaSession.Builder(CarConnectionSafeContext(this), player)
             .setId("itube_video")
             .setSessionActivity(openApp)
             .setCallback(SessionCallback())
@@ -671,4 +682,109 @@ internal class YouTubeMediaSourceFactory(context: Context) : MediaSource.Factory
         return ProgressiveMediaSource.Factory(dataSourceFactory)
             .createMediaSource(mediaItem.buildUpon().setUri(url).build())
     }
+}
+
+private const val CAR_CONNECTION_AUTHORITY = "androidx.car.app.connection"
+private const val CAR_CONNECTION_STATE_COLUMN = "CarConnectionState"
+
+/**
+ * Intercepts Media3's Android Auto connection query (`content://androidx.car.app.connection`)
+ * when no Android Auto provider is installed on the device (common on Android TV and phones),
+ * returning a disconnected cursor without triggering `ActivityThread: Failed to find provider info`.
+ */
+private class CarConnectionSafeContext(base: Context) : ContextWrapper(base) {
+    private val safeAppContext: Context by lazy(LazyThreadSafetyMode.NONE) {
+        val app = base.applicationContext
+        if (app == null || app === base) this else CarConnectionSafeContext(app)
+    }
+
+    private val safeResolver: ContentResolver? by lazy(LazyThreadSafetyMode.NONE) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val provider = CarConnectionSafeContentProvider(base).apply {
+                attachInfo(
+                    base,
+                    ProviderInfo().apply {
+                        authority = CAR_CONNECTION_AUTHORITY
+                        packageName = base.packageName
+                        exported = false
+                    },
+                )
+            }
+            ContentResolver.wrap(provider)
+        } else {
+            null
+        }
+    }
+
+    override fun getApplicationContext(): Context = safeAppContext
+
+    override fun getContentResolver(): ContentResolver = safeResolver ?: super.getContentResolver()
+}
+
+private class CarConnectionSafeContentProvider(
+    private val base: Context,
+) : ContentProvider() {
+    override fun onCreate(): Boolean = true
+
+    override fun query(
+        uri: Uri,
+        projection: Array<out String>?,
+        selection: String?,
+        selectionArgs: Array<out String>?,
+        sortOrder: String?,
+    ): Cursor? {
+        if (uri.authority == CAR_CONNECTION_AUTHORITY && !hasCarConnectionProvider()) {
+            return disconnectedCursor()
+        }
+        return base.contentResolver.query(uri, projection, selection, selectionArgs, sortOrder)
+    }
+
+    override fun query(
+        uri: Uri,
+        projection: Array<out String>?,
+        queryArgs: Bundle?,
+        cancellationSignal: CancellationSignal?,
+    ): Cursor? {
+        if (uri.authority == CAR_CONNECTION_AUTHORITY && !hasCarConnectionProvider()) {
+            return disconnectedCursor()
+        }
+        return base.contentResolver.query(uri, projection, queryArgs, cancellationSignal)
+    }
+
+    override fun getType(uri: Uri): String? =
+        if (uri.authority == CAR_CONNECTION_AUTHORITY && !hasCarConnectionProvider()) null
+        else base.contentResolver.getType(uri)
+
+    override fun insert(uri: Uri, values: ContentValues?): Uri? =
+        base.contentResolver.insert(uri, values)
+
+    override fun bulkInsert(uri: Uri, values: Array<out ContentValues>): Int =
+        base.contentResolver.bulkInsert(uri, values)
+
+    override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int =
+        base.contentResolver.delete(uri, selection, selectionArgs)
+
+    override fun update(
+        uri: Uri,
+        values: ContentValues?,
+        selection: String?,
+        selectionArgs: Array<out String>?,
+    ): Int = base.contentResolver.update(uri, values, selection, selectionArgs)
+
+    override fun call(method: String, arg: String?, extras: Bundle?): Bundle? = null
+
+    override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor? =
+        base.contentResolver.openFileDescriptor(uri, mode)
+
+    override fun openAssetFile(uri: Uri, mode: String): AssetFileDescriptor? =
+        base.contentResolver.openAssetFileDescriptor(uri, mode)
+
+    @Suppress("DEPRECATION")
+    private fun hasCarConnectionProvider(): Boolean =
+        base.packageManager.resolveContentProvider(CAR_CONNECTION_AUTHORITY, 0) != null
+
+    private fun disconnectedCursor(): Cursor =
+        MatrixCursor(arrayOf(CAR_CONNECTION_STATE_COLUMN)).apply {
+            addRow(arrayOf(0))
+        }
 }

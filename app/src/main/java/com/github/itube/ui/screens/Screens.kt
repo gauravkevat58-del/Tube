@@ -1,24 +1,9 @@
 package com.github.itube
 
-import com.github.itube.ui.screens.MusicTrackOptionsSheet
-import com.github.itube.ui.screens.MusicArtistOptionsSheet
-import com.github.itube.ui.screens.MusicAlbumOptionsSheet
-
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.focusGroup
-import androidx.compose.material.icons.rounded.Videocam
-import androidx.compose.material.icons.rounded.MusicNote
-import androidx.compose.material.icons.rounded.PlayCircle
-import androidx.compose.material.icons.rounded.Pause
-import androidx.compose.material.icons.rounded.GraphicEq
-import androidx.compose.material.icons.rounded.SearchOff
 import androidx.compose.material3.Surface
-import androidx.compose.ui.layout.ContentScale
-import coil.compose.AsyncImage
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -47,12 +32,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -61,13 +44,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.Download
-import androidx.compose.material.icons.rounded.Favorite
-import androidx.compose.material.icons.rounded.OfflinePin
-import com.github.itube.MusicCacheManager
-import com.github.itube.LikedSongsStore
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Subscriptions
@@ -79,19 +57,12 @@ import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Cancel
 import androidx.compose.material.icons.rounded.Share
-import androidx.compose.material.icons.rounded.Album
-import androidx.compose.material.icons.rounded.Equalizer
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Shuffle
-import androidx.compose.material.icons.rounded.QueueMusic
 import com.github.itube.ui.components.MaterialLoader
-import com.github.itube.ui.components.AnimatedEqualizer
 import com.github.itube.ui.components.TrackBlurPopup
 import com.github.itube.ui.components.popupContainerColor
 import com.github.itube.ui.components.popupScrimColor
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
-import com.github.itube.ui.components.flowArtistShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -173,10 +144,12 @@ fun HomeScreen(
     LaunchedEffect(signedIn) { if (signedIn) lib.home.ensureLoaded() }
     LaunchedEffect(Unit) { shorts.ensureFeed() }
     val isTv = LocalIsTv.current
+    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    val homeGridCols = if (isTv) tvGridColumns(screenWidth, minColumnWidth = 280.dp, maxColumns = 3) else 1
     CollapsingHeaderLayout(
         resetKey = scrollToTop to lib.home.generation,
         header = {
-            ScreenHeader(title = "iTube", brandMark = true, route = "tab:Home") {
+            ScreenHeader(title = "iTube TV", brandMark = true, route = "tab:Home") {
                 if (isTv && signedIn) CircleAction(Icons.Rounded.Refresh, "Refresh") { lib.home.refresh() }
                 UpdateAction()
                 AccountAction(onAccount)
@@ -188,7 +161,7 @@ fun HomeScreen(
                 lib.home,
                 contentPadding.withTop(top),
                 onOpen,
-                videoBatchSizes = listOf(3, 4),
+                videoBatchSizes = if (isTv) listOf(homeGridCols * 2) else listOf(3, 4),
                 afterVideoBatch = { list, batch ->
                     list.item(key = "homeShorts-$batch") {
                         HomeShortsShelf(shorts.items, batch, onOpenShort)
@@ -271,12 +244,6 @@ private fun HomeShortsShelf(shorts: List<VideoItem>, shelfIndex: Int, onOpenShor
                                 Modifier.align(Alignment.TopStart).padding(8.dp).clip(RoundedCornerShape(6.dp))
                                     .background(Color.White).padding(horizontal = 8.dp, vertical = 3.dp),
                             ) { Text("New", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
-                        }
-                        IconButton(
-                            onClick = { menu(short) },
-                            modifier = Modifier.align(Alignment.TopEnd).padding(2.dp).size(34.dp).tvFocusRing(CircleShape),
-                        ) {
-                            Icon(Icons.Rounded.MoreVert, contentDescription = "Short options", tint = Color.White, modifier = Modifier.size(19.dp))
                         }
                         Text(
                             short.title,
@@ -481,8 +448,6 @@ fun LibraryScreen(
     onOpenHistory: () -> Unit = {},
     onOpenPlaylist: (PlaylistRef) -> Unit,
     onOpenDownloads: () -> Unit,
-    onOpenCachedMusic: () -> Unit = {},
-    onOpenLikedMusic: () -> Unit = {},
     onOpenCollection: (PublicCollection) -> Unit,
     onSignIn: () -> Unit,
     onAccount: () -> Unit,
@@ -576,66 +541,18 @@ fun LibraryScreen(
                     }
                 }
             }
-            item(key = "offlineMediaTitle") { SectionTitle("Offline & Downloads") }
+            item(key = "offlineMediaTitle") { SectionTitle("Downloads") }
             item(key = "offlineMedia") {
-                val cachedCount = MusicCacheManager.cachedTracks.size
-                val cachedBytes = MusicCacheManager.totalStorageBytes.longValue
-                val cachedSizeStr = MusicCacheManager.formatStorageSize(cachedBytes)
-                val likedCount = LikedSongsStore.likedTracks.size
-                if (isTv) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        PlaylistTile(
-                            PlaylistRef("DL", "Downloads", null, "${DownloadLibrary.entries.size} videos"),
-                            Modifier.weight(1f),
-                            onOpenDownloads,
-                        )
-                        CachedSongsTile(
-                            title = "Cached songs",
-                            subtitle = "$cachedCount songs • $cachedSizeStr",
-                            modifier = Modifier.weight(1f),
-                            onClick = onOpenCachedMusic,
-                        )
-                        LikedSongsTile(
-                            title = "Liked songs",
-                            subtitle = "$likedCount songs",
-                            modifier = Modifier.weight(1f),
-                            onClick = onOpenLikedMusic,
-                        )
-                    }
-                } else {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        PlaylistTile(
-                            PlaylistRef("DL", "Downloads", null, "${DownloadLibrary.entries.size} videos"),
-                            Modifier.weight(1f),
-                            onOpenDownloads,
-                        )
-                        CachedSongsTile(
-                            title = "Cached songs",
-                            subtitle = "$cachedCount songs • $cachedSizeStr",
-                            modifier = Modifier.weight(1f),
-                            onClick = onOpenCachedMusic
-                        )
-                    }
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        LikedSongsTile(
-                            title = "Liked songs",
-                            subtitle = "$likedCount songs",
-                            modifier = Modifier.weight(1f),
-                            onClick = onOpenLikedMusic
-                        )
-                        Spacer(Modifier.weight(1f))
-                    }
-                }
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    PlaylistTile(
+                        PlaylistRef("DL", "Downloads", null, "${DownloadLibrary.entries.size} videos"),
+                        if (isTv) Modifier.widthIn(max = 320.dp).fillMaxWidth() else Modifier.weight(1f),
+                        onOpenDownloads,
+                    )
+                    if (!isTv) Spacer(Modifier.weight(1f))
                 }
             }
             if (SavedCollections.items.isNotEmpty()) {
@@ -693,6 +610,7 @@ private fun PlaylistTile(playlist: PlaylistRef, modifier: Modifier, onClick: () 
             .pressable(pressedScale = 0.97f, focusScale = 1.03f, focusShape = shape, onLongClick = { if (canManage) openOptions(playlist) }, onClick = onClick)
             .clip(shape)
             .background(c.surfaceContainerLow)
+            .border(0.75.dp, c.outlineVariant.copy(alpha = 0.28f), shape)
             .padding(14.dp),
         verticalArrangement = Arrangement.SpaceBetween,
     ) {
@@ -706,68 +624,6 @@ private fun PlaylistTile(playlist: PlaylistRef, modifier: Modifier, onClick: () 
         Column {
             Text(playlist.title, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             playlist.subtitle?.let { Text(it, color = c.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1) }
-        }
-    }
-}
-
-@Composable
-private fun CachedSongsTile(title: String, subtitle: String, modifier: Modifier, onClick: () -> Unit) {
-    val c = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(26.dp)
-    Column(
-        modifier = modifier
-            .height(132.dp)
-            .pressable(pressedScale = 0.97f, focusScale = 1.03f, focusShape = shape, onClick = onClick)
-            .clip(shape)
-            .background(c.surfaceContainerLow)
-            .padding(14.dp),
-        verticalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Box(
-            modifier = Modifier.size(52.dp).clip(CookieShape).background(c.tertiaryContainer),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                Icons.Rounded.OfflinePin,
-                contentDescription = null,
-                tint = contentColorFor(c.tertiaryContainer),
-                modifier = Modifier.size(24.dp)
-            )
-        }
-        Column {
-            Text(title, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(subtitle, color = c.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-        }
-    }
-}
-
-@Composable
-private fun LikedSongsTile(title: String, subtitle: String, modifier: Modifier, onClick: () -> Unit) {
-    val c = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(26.dp)
-    Column(
-        modifier = modifier
-            .height(132.dp)
-            .pressable(pressedScale = 0.97f, focusScale = 1.03f, focusShape = shape, onClick = onClick)
-            .clip(shape)
-            .background(c.surfaceContainerLow)
-            .padding(14.dp),
-        verticalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Box(
-            modifier = Modifier.size(52.dp).clip(CookieShape).background(Color(0xFFFF4565).copy(alpha = 0.2f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                Icons.Rounded.Favorite,
-                contentDescription = null,
-                tint = Color(0xFFFF4565),
-                modifier = Modifier.size(24.dp)
-            )
-        }
-        Column {
-            Text(title, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(subtitle, color = c.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
         }
     }
 }
@@ -1264,20 +1120,23 @@ private fun PlaylistShortsShelf(
                             ),
                         ),
                     )
-                    IconButton(
-                        onClick = { onVideoLongPress(short) },
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(4.dp)
-                            .size(30.dp)
-                            .tvFocusRing(CircleShape),
-                    ) {
-                        Icon(
-                            Icons.Rounded.MoreVert,
-                            contentDescription = "Options",
-                            tint = Color.White,
-                            modifier = Modifier.size(18.dp),
-                        )
+                    val isTv = LocalIsTv.current
+                    if (!isTv) {
+                        IconButton(
+                            onClick = { onVideoLongPress(short) },
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(4.dp)
+                                .size(30.dp)
+                                .tvFocusRing(CircleShape),
+                        ) {
+                            Icon(
+                                Icons.Rounded.MoreVert,
+                                contentDescription = "Options",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
                     }
                     Text(
                         short.title,
@@ -1508,20 +1367,10 @@ private fun TextLink(text: String, onClick: () -> Unit) {
 
 // ── Search ─────────────────────────────────────────────────────────────────────
 
-enum class SearchCategory {
-    Videos,
-    Music,
-}
-
-enum class MusicSearchFilter { Songs, Artists, Albums, Playlists }
-
 /** Lives above the tab switcher so results survive switching tabs. */
 @Stable
 class SearchState(private val scope: CoroutineScope) {
     var query by mutableStateOf("")
-    var category by mutableStateOf(SearchCategory.Videos)
-
-    // Video search state
     var submitted by mutableStateOf("")
         private set
     var results by mutableStateOf<List<SearchResult>>(emptyList())
@@ -1537,24 +1386,6 @@ class SearchState(private val scope: CoroutineScope) {
         private set
     private var job: Job? = null
 
-    // Music search state
-    var musicSubmitted by mutableStateOf("")
-        private set
-    var musicResults by mutableStateOf<List<MusicTrack>>(emptyList())
-        private set
-    var musicLoading by mutableStateOf(false)
-        private set
-    var musicError by mutableStateOf<String?>(null)
-        private set
-    var musicGeneration by mutableStateOf(0)
-        private set
-    private var musicJob: Job? = null
-    var musicFilter by mutableStateOf(MusicSearchFilter.Songs)
-        private set
-    var musicArtistResults by mutableStateOf<List<MusicArtist>>(emptyList())
-        private set
-    var musicPlaylistResults by mutableStateOf<List<MusicPlaylistRef>>(emptyList())
-        private set
     var suggestions by mutableStateOf<List<String>>(emptyList())
         private set
     private var suggestionsJob: Job? = null
@@ -1572,78 +1403,26 @@ class SearchState(private val scope: CoroutineScope) {
         }
     }
 
-    fun selectCategory(newCategory: SearchCategory) {
-        if (category == newCategory) return
-        category = newCategory
-        val activeQuery = query.trim().ifEmpty {
-            if (newCategory == SearchCategory.Videos) musicSubmitted else submitted
-        }
-        if (activeQuery.isNotEmpty()) {
-            query = activeQuery
-            submit()
-        }
-    }
-
     /** Selecting a row in the search filter sheet immediately refreshes the active query. */
     fun selectFilter(newFilter: SearchFilter) {
         if (filter == newFilter) return
         filter = newFilter
-        if (category == SearchCategory.Videos && query.trim().isNotEmpty()) submit()
-    }
-
-    fun selectMusicFilter(newFilter: MusicSearchFilter) {
-        if (musicFilter == newFilter) return
-        musicFilter = newFilter
-        if (category == SearchCategory.Music && musicSubmitted.isNotEmpty()) submitMusic()
+        if (query.trim().isNotEmpty()) submit()
     }
 
     fun submit() {
         val q = query.trim()
         if (q.isEmpty()) return
         SearchHistory.add(q)
-        if (category == SearchCategory.Videos) {
-            submitted = q
-            loading = true
-            error = null
-            job?.cancel()
-            job = scope.launch {
-                runCatching { YouTube.search(q, filter) }
-                    .onSuccess { results = it; generation++ }
-                    .onFailure { error = YouTube.friendlyError(it) }
-                loading = false
-            }
-        } else {
-            musicSubmitted = q
-            submitMusic()
-        }
-    }
-
-    private fun submitMusic() {
-        musicLoading = true
-        musicError = null
-        musicJob?.cancel()
-        musicResults = emptyList()
-        musicArtistResults = emptyList()
-        musicPlaylistResults = emptyList()
-        ListeningProfile.recordSearch(musicSubmitted, musicFilter.name)
-        musicJob = scope.launch {
-            runCatching {
-                when (musicFilter) {
-                    MusicSearchFilter.Songs -> {
-                        musicResults = MusicBackend.searchMusic(musicSubmitted)
-                    }
-                    MusicSearchFilter.Artists -> {
-                        musicArtistResults = MusicBackend.searchArtists(musicSubmitted)
-                    }
-                    MusicSearchFilter.Albums -> {
-                        musicPlaylistResults = MusicBackend.searchAlbums(musicSubmitted)
-                    }
-                    MusicSearchFilter.Playlists -> {
-                        musicPlaylistResults = MusicBackend.searchPlaylists(musicSubmitted)
-                    }
-                }
-            }.onFailure { musicError = it.localizedMessage ?: "Failed to search music" }
-            musicLoading = false
+        submitted = q
+        loading = true
+        error = null
+        job?.cancel()
+        job = scope.launch {
+            runCatching { YouTube.search(q, filter) }
+                .onSuccess { results = it; generation++ }
+                .onFailure { error = YouTube.friendlyError(it) }
+            loading = false
         }
     }
 }
@@ -1692,8 +1471,6 @@ fun SearchScreen(
     onOpen: (VideoItem) -> Unit,
     onOpenShort: (VideoItem) -> Unit = {},
     onOpenResult: (SearchResult) -> Unit,
-    onMusicArtistClick: (MusicArtist) -> Unit = {},
-    onMusicPlaylistClick: (MusicPlaylistRef) -> Unit = {},
     onSettings: () -> Unit,
     scrollToTop: Int = 0,
 ) {
@@ -1701,6 +1478,8 @@ fun SearchScreen(
     val keyboard = LocalSoftwareKeyboardController.current
     val focus = LocalFocusManager.current
     val view = LocalView.current
+    val bridge = LocalTvFocusBridge.current
+    val isTv = LocalIsTv.current
     // Search and Enter both dismiss the keyboard — every field, every time. A hide issued
     // while the key event is still being dispatched can be undone by the IME, so the
     // window-level hide is posted to run after it.
@@ -1715,41 +1494,42 @@ fun SearchScreen(
     }
     var focused by remember { mutableStateOf(false) }
     var filtersOpen by remember { mutableStateOf(false) }
-    var trackOptionsFor by remember { mutableStateOf<MusicTrack?>(null) }
-    var artistOptionsFor by remember { mutableStateOf<MusicArtist?>(null) }
-    var albumOptionsFor by remember { mutableStateOf<MusicPlaylistRef?>(null) }
-    // The keyboard closed by Back or its own button leaves the field focused; drop the focus
-    // with it so the history gives way to the results again.
+    // On touch phones, closing the soft keyboard drops field focus so results return cleanly.
+    // On Android TV, only clear if an on-screen IME was previously visible and just dismissed.
+    var imeWasVisible by remember { mutableStateOf(false) }
     val imeVisible = WindowInsets.isImeVisible
-    LaunchedEffect(imeVisible) { if (!imeVisible && focused) focus.clearFocus() }
+    LaunchedEffect(imeVisible, isTv) {
+        if (imeVisible) {
+            imeWasVisible = true
+        } else if (imeWasVisible && !isTv && focused) {
+            imeWasVisible = false
+            focus.clearFocus()
+        } else {
+            imeWasVisible = false
+        }
+    }
 
-    val currentSubmitted = if (state.category == SearchCategory.Videos) state.submitted else state.musicSubmitted
     // Past searches, filtered by what's typed: while typing, and on the empty page.
     val history = SearchHistory.matching(state.query)
-    val showHistory = history.isNotEmpty() && (focused || currentSubmitted.isEmpty())
+    val showHistory = history.isNotEmpty() && (focused || state.submitted.isEmpty())
     val showSuggestions = focused && state.query.trim().length >= 2 && state.suggestions.isNotEmpty()
 
-    val bridge = LocalTvFocusBridge.current
-    val isTv = LocalIsTv.current
     // The search bar rides with the header: both slide away together while scrolling results.
     CollapsingHeaderLayout(
-        resetKey = listOf(scrollToTop, state.generation, state.musicGeneration, state.category, showHistory),
+        resetKey = listOf(scrollToTop, state.generation, showHistory),
         header = { Column {
-        // This remains a Search page; filters are separate from application settings.
         ScreenHeader(
             title = "Search",
             route = "tab:Search",
         ) {
-            if (state.category == SearchCategory.Videos) {
-                CircleAction(Icons.Rounded.Tune, "Search filters") { filtersOpen = true }
-            }
+            CircleAction(Icons.Rounded.Tune, "Search filters") { filtersOpen = true }
         }
         Row(
             modifier = Modifier
                 .padding(horizontal = 16.dp)
                 .fillMaxWidth()
                 .height(60.dp)
-                .border(if (focused) 2.5.dp else 0.dp, if (focused) c.primary else Color.Transparent, CircleShape)
+                .border(if (focused) 2.5.dp else 0.75.dp, if (focused) c.primary else c.outlineVariant.copy(alpha = 0.25f), CircleShape)
                 .clip(CircleShape)
                 .background(c.surfaceContainerHigh)
                 .padding(start = 20.dp, end = 8.dp),
@@ -1760,7 +1540,7 @@ fun SearchScreen(
             Box(Modifier.weight(1f)) {
                 if (state.query.isEmpty()) {
                     Text(
-                        if (state.category == SearchCategory.Videos) "Search iTube" else "Search iMusic",
+                        "Search iTube TV",
                         color = c.onSurfaceVariant,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold
@@ -1795,205 +1575,95 @@ fun SearchScreen(
                 ) { Icon(Icons.Rounded.Close, "Clear", tint = c.onSurfaceVariant) }
             }
         }
-
-        // Switch the source without losing the typed query.
-        Row(
-            modifier = Modifier
-                .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 4.dp)
-                .fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            val isVideos = state.category == SearchCategory.Videos
-            val videosBg by animateColorAsState(
-                targetValue = if (isVideos) c.primary else c.surfaceContainerHigh,
-                animationSpec = tween(200),
-                label = "videosBg"
-            )
-            val videosFg by animateColorAsState(
-                targetValue = if (isVideos) c.onPrimary else c.onSurfaceVariant,
-                animationSpec = tween(200),
-                label = "videosFg"
-            )
-            Box(
-                modifier = Modifier
-                    .pressable(focusShape = CircleShape, focusScale = 1.04f) { state.selectCategory(SearchCategory.Videos) }
-                    .clip(CircleShape)
-                    .background(videosBg)
-                    .padding(horizontal = 18.dp, vertical = 8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.PlayCircle,
-                        contentDescription = null,
-                        tint = videosFg,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Text(
-                        text = "iTube",
-                        color = videosFg,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            }
-
-            val isMusic = state.category == SearchCategory.Music
-            val musicBg by animateColorAsState(
-                targetValue = if (isMusic) c.primary else c.surfaceContainerHigh,
-                animationSpec = tween(200),
-                label = "musicBg"
-            )
-            val musicFg by animateColorAsState(
-                targetValue = if (isMusic) c.onPrimary else c.onSurfaceVariant,
-                animationSpec = tween(200),
-                label = "musicFg"
-            )
-            Box(
-                modifier = Modifier
-                    .pressable(focusShape = CircleShape, focusScale = 1.04f) { state.selectCategory(SearchCategory.Music) }
-                    .clip(CircleShape)
-                    .background(musicBg)
-                    .padding(horizontal = 18.dp, vertical = 8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.MusicNote,
-                        contentDescription = null,
-                        tint = musicFg,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Text(
-                        text = "iMusic",
-                        color = musicFg,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            }
-        }
-        // iMusic filter chips (only when Music tab selected)
-        if (state.category == SearchCategory.Music) {
-            LazyRow(
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                items(MusicSearchFilter.entries.toList()) { filter ->
-                    val selected = state.musicFilter == filter
-                    FilterChip(
-                        selected = selected,
-                        onClick = { state.selectMusicFilter(filter) },
-                        modifier = Modifier.tvFocusRing(CircleShape),
-                        label = { Text(filter.name, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = c.primary,
-                            selectedLabelColor = c.onPrimary,
-                        ),
-                        shape = CircleShape,
-                        border = null,
-                    )
-                }
-            }
-        }
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(8.dp))
         } },
     ) { top ->
-        val isTv = LocalIsTv.current
         Box(Modifier.fillMaxSize()) {
-            if (state.category == SearchCategory.Videos) {
-                // Suggestions are already a scrolling list with the header inset. Including
-                // them here avoids adding that inset a second time (which left a huge blank gap).
-                val listShown = showSuggestions || showHistory || (state.results.isNotEmpty() && state.error == null)
-                Box(Modifier.padding(top = if (listShown) 0.dp else top)) {
-                    when {
-                        showSuggestions -> SearchSuggestionsList(
-                            suggestions = state.suggestions,
-                            contentPadding = contentPadding.withTop(top),
-                            onSearch = { state.updateQuery(it); submit() },
-                        )
-                        showHistory -> SearchHistoryList(
-                            history = history,
-                            contentPadding = contentPadding.withTop(top),
-                            onSearch = { state.query = it; submit() },
-                        )
-                        state.loading && state.results.isEmpty() -> Box(Modifier.fillMaxWidth().padding(top = 48.dp), Alignment.Center) {
-                            MaterialLoader(color = c.primary, size = 36.dp)
-                        }
-                        state.error != null -> EmptyState(
-                            icon = Icons.Rounded.CloudOff,
-                            title = "Search didn't load",
-                            body = state.error.orEmpty(),
-                            action = { PillButton("Try again", { state.submit() }) },
-                        )
-                        state.submitted.isEmpty() -> EmptyState(
-                            icon = Icons.Rounded.TravelExplore,
-                            title = "Search without the ads",
-                            body = "Results play straight away, with no ads and no sign-in.",
-                        )
-                        state.results.isEmpty() -> EmptyState(
-                            icon = Icons.Rounded.History,
-                            title = "Nothing found",
-                            body = "No videos matched “${state.submitted}”.",
-                        )
-                        else -> {
-                            val list = rememberScrollToTop(scrollToTop)
-                            LaunchedEffect(state.generation) { list.scrollToItem(0) }
-                            val displayItems = remember(state.results) { groupSearchResults(state.results) }
-                            if (isTv) {
-                                val rows = remember(displayItems) {
-                                    buildList<List<SearchDisplayItem>> {
-                                        val buf = ArrayList<SearchDisplayItem>(2)
-                                        for (d in displayItems) {
-                                            if (d is SearchDisplayItem.ShortsShelf) {
-                                                if (buf.isNotEmpty()) { add(buf.toList()); buf.clear() }
-                                                add(listOf(d))
-                                            } else {
-                                                buf.add(d)
-                                                if (buf.size == 2) { add(buf.toList()); buf.clear() }
-                                            }
-                                        }
-                                        if (buf.isNotEmpty()) add(buf.toList())
-                                    }
-                                }
-                                LazyColumn(state = list, contentPadding = contentPadding.withTop(top)) {
-                                    items(
-                                        items = rows,
-                                        key = { row ->
-                                            when (val first = row.first()) {
-                                                is SearchDisplayItem.Normal -> "tv-row-${first.result.id}"
-                                                is SearchDisplayItem.ShortsShelf -> first.key
-                                            }
-                                        }
-                                    ) { row ->
-                                        val first = row.first()
-                                        if (first is SearchDisplayItem.ShortsShelf) {
-                                            SearchShortsShelf(first.shorts, onOpenShort)
+            // Suggestions are already a scrolling list with the header inset. Including
+            // them here avoids adding that inset a second time (which left a huge blank gap).
+            val listShown = showSuggestions || showHistory || (state.results.isNotEmpty() && state.error == null)
+            Box(Modifier.padding(top = if (listShown) 0.dp else top)) {
+                when {
+                    showSuggestions -> SearchSuggestionsList(
+                        suggestions = state.suggestions,
+                        contentPadding = contentPadding.withTop(top),
+                        onSearch = { state.updateQuery(it); submit() },
+                    )
+                    showHistory -> SearchHistoryList(
+                        history = history,
+                        contentPadding = contentPadding.withTop(top),
+                        onSearch = { state.query = it; submit() },
+                    )
+                    state.loading && state.results.isEmpty() -> Box(Modifier.fillMaxWidth().padding(top = 48.dp), Alignment.Center) {
+                        MaterialLoader(color = c.primary, size = 36.dp)
+                    }
+                    state.error != null -> EmptyState(
+                        icon = Icons.Rounded.CloudOff,
+                        title = "Search didn't load",
+                        body = state.error.orEmpty(),
+                        action = { PillButton("Try again", { state.submit() }) },
+                    )
+                    state.submitted.isEmpty() -> EmptyState(
+                        icon = Icons.Rounded.TravelExplore,
+                        title = "Search without the ads",
+                        body = "Results play straight away, with no ads and no sign-in.",
+                    )
+                    state.results.isEmpty() -> EmptyState(
+                        icon = Icons.Rounded.History,
+                        title = "Nothing found",
+                        body = "No videos matched “${state.submitted}”.",
+                    )
+                    else -> {
+                        val list = rememberScrollToTop(scrollToTop)
+                        LaunchedEffect(state.generation) { list.scrollToItem(0) }
+                        val displayItems = remember(state.results) { groupSearchResults(state.results) }
+                        if (isTv) {
+                            val rows = remember(displayItems) {
+                                buildList<List<SearchDisplayItem>> {
+                                    val buf = ArrayList<SearchDisplayItem>(2)
+                                    for (d in displayItems) {
+                                        if (d is SearchDisplayItem.ShortsShelf) {
+                                            if (buf.isNotEmpty()) { add(buf.toList()); buf.clear() }
+                                            add(listOf(d))
                                         } else {
-                                            Row(
-                                                Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                            ) {
-                                                row.forEach { cell ->
-                                                    if (cell is SearchDisplayItem.Normal) {
-                                                        Box(Modifier.weight(1f)) {
-                                                            SearchResultCard(cell.result, onOpen, onOpenShort, onOpenResult)
-                                                        }
+                                            buf.add(d)
+                                            if (buf.size == 2) { add(buf.toList()); buf.clear() }
+                                        }
+                                    }
+                                    if (buf.isNotEmpty()) add(buf.toList())
+                                }
+                            }
+                            LazyColumn(state = list, contentPadding = contentPadding.withTop(top)) {
+                                items(
+                                    items = rows,
+                                    key = { row ->
+                                        when (val first = row.first()) {
+                                            is SearchDisplayItem.Normal -> "tv-row-${first.result.id}"
+                                            is SearchDisplayItem.ShortsShelf -> first.key
+                                        }
+                                    }
+                                ) { row ->
+                                    val first = row.first()
+                                    if (first is SearchDisplayItem.ShortsShelf) {
+                                        SearchShortsShelf(first.shorts, onOpenShort)
+                                    } else {
+                                        Row(
+                                            Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        ) {
+                                            row.forEach { cell ->
+                                                if (cell is SearchDisplayItem.Normal) {
+                                                    Box(Modifier.weight(1f)) {
+                                                        SearchResultCard(cell.result, onOpen, onOpenShort, onOpenResult)
                                                     }
                                                 }
-                                                if (row.size == 1) Spacer(Modifier.weight(1f))
                                             }
+                                            if (row.size == 1) Spacer(Modifier.weight(1f))
                                         }
                                     }
                                 }
-                            } else {
+                            }
+                        } else {
                             LazyColumn(state = list, contentPadding = contentPadding.withTop(top)) {
                                 items(
                                     items = displayItems,
@@ -2010,215 +1680,11 @@ fun SearchScreen(
                                     }
                                 }
                             }
-                            }
-                        }
-                    }
-                }
-            } else {
-                // Music Search Results (AirBeats / Flow style with Filter Tabs)
-                val hasResults = when (state.musicFilter) {
-                    MusicSearchFilter.Songs -> state.musicResults.isNotEmpty()
-                    MusicSearchFilter.Artists -> state.musicArtistResults.isNotEmpty()
-                    MusicSearchFilter.Albums, MusicSearchFilter.Playlists -> state.musicPlaylistResults.isNotEmpty()
-                }
-                val listShown = showHistory || (hasResults && state.musicError == null)
-                Box(Modifier.padding(top = if (listShown) 0.dp else top)) {
-                    when {
-                        showHistory -> SearchHistoryList(
-                            history = history,
-                            contentPadding = contentPadding.withTop(top),
-                            onSearch = { state.query = it; submit() },
-                        )
-                        state.musicLoading && !hasResults -> Box(Modifier.fillMaxWidth().padding(top = 48.dp), Alignment.Center) {
-                            MaterialLoader(color = c.primary, size = 36.dp)
-                        }
-                        state.musicError != null -> EmptyState(
-                            icon = Icons.Rounded.CloudOff,
-                            title = "Music search didn't load",
-                            body = state.musicError.orEmpty(),
-                            action = { PillButton("Try again", { state.submit() }) },
-                        )
-                        state.musicSubmitted.isEmpty() -> EmptyState(
-                            icon = Icons.Rounded.MusicNote,
-                            title = "Search YouTube Music",
-                            body = "Search for songs, artists, albums, and playlists.",
-                        )
-                        !hasResults -> EmptyState(
-                            icon = Icons.Rounded.SearchOff,
-                            title = when (state.musicFilter) {
-                                MusicSearchFilter.Songs -> "No songs found"
-                                MusicSearchFilter.Artists -> "No artists found"
-                                MusicSearchFilter.Albums -> "No albums found"
-                                MusicSearchFilter.Playlists -> "No playlists found"
-                            },
-                            body = "No results matched “${state.musicSubmitted}”.",
-                        )
-                        else -> {
-                            val list = rememberScrollToTop(scrollToTop)
-                            LaunchedEffect(state.musicGeneration) { list.scrollToItem(0) }
-                            when (state.musicFilter) {
-                                MusicSearchFilter.Songs -> {
-                                    LazyColumn(state = list, contentPadding = contentPadding.withTop(top)) {
-                                        items(state.musicResults, key = { it.id }) { track ->
-                                            MusicSearchTrackRow(
-                                                track = track,
-                                                onClick = {
-                                                    MusicPlayerState.play(track, null)
-                                                },
-                                                onLongClick = {
-                                                    trackOptionsFor = track
-                                                }
-                                            )
-                                        }
-                                    }
-                                }
-                                MusicSearchFilter.Artists -> {
-                                    val artistShape = flowArtistShape()
-                                    LazyColumn(state = list, contentPadding = contentPadding.withTop(top)) {
-                                        items(state.musicArtistResults, key = { it.id }) { artist ->
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .pressable(
-                                                        pressedScale = 0.98f,
-                                                        focusScale = 1.015f,
-                                                        focusShape = RoundedCornerShape(14.dp),
-                                                        onLongClick = { artistOptionsFor = artist },
-                                                        onClick = { onMusicArtistClick(artist) }
-                                                    )
-                                                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                            ) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(56.dp)
-                                                        .clip(artistShape)
-                                                        .background(c.surfaceContainerHigh),
-                                                ) {
-                                                    AsyncImage(
-                                                        model = artist.thumbnailUrl,
-                                                        contentDescription = artist.name,
-                                                        contentScale = ContentScale.Crop,
-                                                        modifier = Modifier.fillMaxSize(),
-                                                    )
-                                                }
-                                                Spacer(Modifier.width(16.dp))
-                                                Column(Modifier.weight(1f)) {
-                                                    Text(
-                                                        text = artist.name,
-                                                        fontWeight = FontWeight.Bold,
-                                                        fontSize = 16.sp,
-                                                        color = c.onBackground,
-                                                        maxLines = 1,
-                                                        overflow = TextOverflow.Ellipsis,
-                                                    )
-                                                    Spacer(Modifier.height(2.dp))
-                                                    Text(
-                                                        text = artist.subscribers ?: "Artist",
-                                                        fontSize = 13.sp,
-                                                        color = c.onSurfaceVariant,
-                                                        maxLines = 1,
-                                                        overflow = TextOverflow.Ellipsis,
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                MusicSearchFilter.Albums, MusicSearchFilter.Playlists -> {
-                                    LazyColumn(state = list, contentPadding = contentPadding.withTop(top)) {
-                                        items(state.musicPlaylistResults, key = { it.id }) { item ->
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .pressable(
-                                                        pressedScale = 0.98f,
-                                                        focusScale = 1.015f,
-                                                        focusShape = RoundedCornerShape(14.dp),
-                                                        onLongClick = { albumOptionsFor = item },
-                                                        onClick = { onMusicPlaylistClick(item) }
-                                                    )
-                                                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                            ) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(56.dp)
-                                                        .clip(RoundedCornerShape(8.dp))
-                                                        .background(c.surfaceContainerHigh),
-                                                ) {
-                                                    AsyncImage(
-                                                        model = item.thumbnailUrl,
-                                                        contentDescription = item.title,
-                                                        contentScale = ContentScale.Crop,
-                                                        modifier = Modifier.fillMaxSize(),
-                                                    )
-                                                }
-                                                Spacer(Modifier.width(16.dp))
-                                                Column(Modifier.weight(1f)) {
-                                                    Text(
-                                                        text = item.title,
-                                                        fontWeight = FontWeight.Bold,
-                                                        fontSize = 15.sp,
-                                                        color = c.onBackground,
-                                                        maxLines = 1,
-                                                        overflow = TextOverflow.Ellipsis,
-                                                    )
-                                                    Spacer(Modifier.height(2.dp))
-                                                    Text(
-                                                        text = item.author.ifBlank { if (item.isAlbum) "Album" else "Playlist" },
-                                                        fontSize = 13.sp,
-                                                        color = c.onSurfaceVariant,
-                                                        maxLines = 1,
-                                                        overflow = TextOverflow.Ellipsis,
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
                         }
                     }
                 }
             }
         }
-    }
-    trackOptionsFor?.let { track ->
-        MusicTrackOptionsSheet(
-            track = track,
-            onDismiss = { trackOptionsFor = null },
-            onGoToArtist = { artistName ->
-                trackOptionsFor = null
-                onMusicArtistClick(MusicArtist(id = artistName, name = artistName))
-            }
-        )
-    }
-
-    artistOptionsFor?.let { artist ->
-        MusicArtistOptionsSheet(
-            artist = artist,
-            onDismiss = { artistOptionsFor = null },
-            onViewArtist = {
-                artistOptionsFor = null
-                onMusicArtistClick(artist)
-            }
-        )
-    }
-
-    albumOptionsFor?.let { album ->
-        MusicAlbumOptionsSheet(
-            playlist = album,
-            onDismiss = { albumOptionsFor = null },
-            onViewAlbum = {
-                albumOptionsFor = null
-                onMusicPlaylistClick(album)
-            },
-            onGoToArtist = { artistName ->
-                albumOptionsFor = null
-                onMusicArtistClick(MusicArtist(id = artistName, name = artistName))
-            }
-        )
     }
 
     if (filtersOpen) SearchFiltersSheet(
@@ -2459,12 +1925,6 @@ fun SearchShortsShelf(shorts: List<VideoItem>, onOpenShort: (VideoItem) -> Unit)
                                 Brush.verticalGradient(0.42f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.78f)),
                             ),
                         )
-                        IconButton(
-                            onClick = { menu(short) },
-                            modifier = Modifier.align(Alignment.TopEnd).padding(2.dp).size(34.dp).tvFocusRing(CircleShape),
-                        ) {
-                            Icon(Icons.Rounded.MoreVert, contentDescription = "Short options", tint = Color.White, modifier = Modifier.size(19.dp))
-                        }
                         Text(
                             short.title,
                             color = Color.White,
@@ -2540,297 +2000,6 @@ private fun SearchSuggestionsList(suggestions: List<String>, contentPadding: Pad
                 Icon(Icons.Rounded.Search, null, tint = c.onSurfaceVariant, modifier = Modifier.size(21.dp))
                 Spacer(Modifier.width(16.dp))
                 Text(suggestion, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-        }
-    }
-}
-
-/** AirBeats-styled music search track item row with cover art, titles, badges, and quick play. */
-@Composable
-fun MusicSearchTrackRow(
-    track: MusicTrack,
-    onClick: () -> Unit,
-    onLongClick: (() -> Unit)? = null,
-    modifier: Modifier = Modifier,
-) {
-    val isCurrent = MusicPlayerState.currentTrack?.id == track.id
-    val isPlaying = isCurrent && MusicPlayerState.isPlaying
-    val c = MaterialTheme.colorScheme
-
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .pressable(
-                pressedScale = 0.98f,
-                focusScale = 1.015f,
-                focusShape = RoundedCornerShape(14.dp),
-                onLongClick = onLongClick,
-                onClick = onClick,
-            )
-            .padding(horizontal = 16.dp, vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Thumbnail with rounded corners and playing indicator
-        Box(
-            modifier = Modifier
-                .size(54.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(c.surfaceContainerHighest)
-        ) {
-            AsyncImage(
-                model = track.thumbnailUrl?.highQualityThumbnail(),
-                contentDescription = track.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-
-            if (isCurrent) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.55f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    AnimatedEqualizer(
-                        isPlaying = isPlaying,
-                        color = Color.White,
-                        size = 24.dp
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.width(14.dp))
-
-        // Title and artist
-        Column(
-            modifier = Modifier.weight(1f)
-        ) {
-            Text(
-                text = track.title,
-                style = MaterialTheme.typography.bodyLarge.copy(
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 15.sp
-                ),
-                color = if (isCurrent) c.primary else c.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-
-            Spacer(modifier = Modifier.height(3.dp))
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // AirBeats style "Music" badge
-                Box(
-                    modifier = Modifier
-                        .background(
-                            color = c.surfaceVariant.copy(alpha = 0.7f),
-                            shape = RoundedCornerShape(4.dp)
-                        )
-                        .padding(horizontal = 5.dp, vertical = 1.5.dp)
-                ) {
-                    Text(
-                        text = "Music",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Medium,
-                            fontSize = 9.sp
-                        ),
-                        color = c.onSurfaceVariant
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(6.dp))
-
-                Text(
-                    text = track.artists + if (track.durationSec > 0) " • ${formatMusicDuration(track.durationSec)}" else "",
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
-                    color = c.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.width(8.dp))
-
-        // Play/Pause Action Icon
-        Surface(
-            shape = CircleShape,
-            color = if (isCurrent) c.primary.copy(alpha = 0.15f) else c.surfaceVariant.copy(alpha = 0.45f),
-            modifier = Modifier.size(36.dp)
-        ) {
-            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                Icon(
-                    imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                    contentDescription = if (isPlaying) "Pause" else "Play",
-                    tint = if (isCurrent) c.primary else c.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-        }
-    }
-}
-
-/** Music discovery feed: real YouTube Music shelves with a bounded catalog-search fallback. */
-@Stable
-class MusicHomeState(private val scope: CoroutineScope) {
-    data class Mix(val title: String, val query: String, val tracks: List<VideoItem> = emptyList())
-    private val fallbackMixes = listOf(
-        Mix("Quick picks", "popular songs"),
-        Mix("New releases", "new songs 2026"),
-        Mix("Trending", "trending music"),
-        Mix("Made for you", "top hits playlist"),
-        Mix("Indian hits", "latest Indian hit songs"),
-        Mix("Chill", "chill relaxing music"),
-        Mix("Workout", "workout music hits"),
-        Mix("Focus", "instrumental focus music"),
-    )
-    var mixes by mutableStateOf(fallbackMixes)
-        private set
-    var loading by mutableStateOf(true)
-        private set
-    var error by mutableStateOf<String?>(null)
-        private set
-    private var started = false
-    private var loadJob: Job? = null
-
-    fun load(force: Boolean = false) {
-        if (started && !force) return
-        started = true
-        loadJob?.cancel()
-        loadJob = scope.launch {
-            loading = true
-            error = null
-
-            // If YouTube changes or blocks the home endpoint, keep the page usable with
-            // independent catalog searches; one slow request cannot keep the whole screen spinning.
-            val requested = fallbackMixes
-            mixes = requested
-            // Sending every query at the same time makes YouTube reject the extractor as bot
-            // traffic. Load each shelf in order and reveal it immediately.
-            requested.forEachIndexed { index, mix ->
-                val tracks = withTimeoutOrNull(15_000) {
-                    runCatching { YouTube.search(mix.query) }.getOrNull()
-                }.orEmpty()
-                if (tracks.isNotEmpty()) {
-                    mixes = mixes.toMutableList().also { it[index] = mix.copy(tracks = tracks) }
-                } else if (error == null) {
-                    error = "Some music shelves could not be loaded."
-                }
-            }
-            loading = false
-            if (mixes.none { it.tracks.isNotEmpty() } && error == null) error = "No music loaded. Check your connection and try again."
-        }
-    }
-}
-@Composable
-fun MusicHomeScreen(
-    state: MusicHomeState,
-    contentPadding: PaddingValues,
-    onSearch: () -> Unit,
-    onPlay: (List<VideoItem>, Int) -> Unit,
-) {
-    val c = MaterialTheme.colorScheme
-    LaunchedEffect(state) { state.load() }
-    val featured = state.mixes.firstNotNullOfOrNull { it.tracks.firstOrNull() }
-    LazyColumn(contentPadding = contentPadding) {
-        item {
-            Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("iTube Music", color = c.onSurface, fontSize = 29.sp, fontWeight = FontWeight.Black)
-                    Text("Your music, ready to play", color = c.onSurfaceVariant, fontSize = 14.sp)
-                }
-                Icon(Icons.Rounded.Equalizer, "Music", tint = c.primary, modifier = Modifier.size(30.dp))
-            }
-            val isTv = LocalIsTv.current
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 18.dp)
-                    .pressable(focusShape = CircleShape, onClick = onSearch)
-                    .clip(CircleShape)
-                    .background(c.surfaceContainerHigh)
-                    .padding(horizontal = 18.dp, vertical = 15.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(Icons.Rounded.Search, null, tint = c.onSurfaceVariant)
-                Spacer(Modifier.width(12.dp))
-                Text("Search songs, artists, albums", color = c.onSurfaceVariant, fontSize = 16.sp)
-            }
-            Spacer(Modifier.height(18.dp))
-            if (featured != null) {
-                val featShape = RoundedCornerShape(26.dp)
-                Box(
-                    Modifier.fillMaxWidth().padding(horizontal = 18.dp).height(if (isTv) 210.dp else 270.dp)
-                        .pressable(focusScale = 1.02f, focusShape = featShape) {
-                            val mix = state.mixes.firstOrNull { it.tracks.any { song -> song.id == featured.id } }
-                            val list = mix?.tracks.orEmpty()
-                            onPlay(list, list.indexOfFirst { it.id == featured.id }.coerceAtLeast(0))
-                        }
-                        .clip(featShape),
-                ) {
-                    Thumbnail(featured.thumbnail, Modifier.fillMaxSize(), radius = 0)
-                    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.9f)))))
-                    Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(20.dp)) {
-                        Text("FEATURED SONG", color = Color.White.copy(alpha = 0.78f), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
-                        Text(featured.title, Modifier.padding(top = 5.dp), color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(featured.channel, Modifier.weight(1f), color = Color.White.copy(alpha = 0.82f), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Row(Modifier.clip(CircleShape).background(c.primary).padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Rounded.PlayArrow, null, tint = c.onPrimary, modifier = Modifier.size(18.dp))
-                                Text("Play", Modifier.padding(start = 5.dp), color = c.onPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            }
-                        }
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-            }
-        }
-        if (state.loading && state.mixes.none { it.tracks.isNotEmpty() }) {
-            item { Box(Modifier.fillMaxWidth().padding(28.dp), contentAlignment = Alignment.Center) { MaterialLoader(color = c.primary, size = 32.dp) } }
-        }
-        state.error?.let { message ->
-            item {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(message, Modifier.weight(1f), color = c.onSurfaceVariant, fontSize = 13.sp)
-                    TextLink("Retry") { state.load(force = true) }
-                }
-            }
-        }
-        state.mixes.filter { it.tracks.isNotEmpty() }.forEach { mix ->
-            item(key = "music-section-${mix.query}") {
-                Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(mix.title, color = c.onSurface, fontSize = 21.sp, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("From YouTube Music", color = c.onSurfaceVariant, fontSize = 12.sp)
-                    }
-                    Icon(Icons.Rounded.PlayArrow, "Play ${mix.title}", tint = c.primary, modifier = Modifier.size(32.dp).pressable(focusShape = CircleShape) { onPlay(mix.tracks, 0) })
-                }
-                LazyRow(contentPadding = PaddingValues(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(mix.tracks.take(16), key = { "${mix.query}-${it.id}" }) { track ->
-                        Column(Modifier.width(158.dp).pressable(focusScale = 1.03f, focusShape = RoundedCornerShape(20.dp)) {
-                            onPlay(mix.tracks, mix.tracks.indexOfFirst { it.id == track.id }.coerceAtLeast(0))
-                        }) {
-                            Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(20.dp))) {
-                                Thumbnail(track.thumbnail, Modifier.fillMaxSize(), radius = 0)
-                                Box(Modifier.align(Alignment.BottomEnd).padding(9.dp).size(38.dp).clip(CircleShape).background(c.primary), contentAlignment = Alignment.Center) {
-                                    Icon(Icons.Rounded.PlayArrow, "Play ${track.title}", tint = c.onPrimary)
-                                }
-                            }
-                            Text(track.title, Modifier.padding(top = 9.dp), color = c.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            Text(track.channel, color = c.onSurfaceVariant, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                    }
-                }
-            }
-        }
-        item {
-            Row(Modifier.fillMaxWidth().pressable(focusScale = 1.015f, focusShape = RoundedCornerShape(14.dp), onClick = onSearch).padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Rounded.Album, null, tint = c.primary)
-                Spacer(Modifier.width(12.dp))
-                Text("Explore more songs and artists", color = c.onSurface, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.weight(1f))
-                Icon(Icons.Rounded.QueueMusic, null, tint = c.onSurfaceVariant)
             }
         }
     }

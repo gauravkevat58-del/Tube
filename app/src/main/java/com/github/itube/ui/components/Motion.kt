@@ -10,14 +10,15 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -26,8 +27,11 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.graphics.graphicsLayer
@@ -78,7 +82,7 @@ fun Modifier.pressable(
     enabled: Boolean = true,
     pressedScale: Float = 0.94f,
     focusScale: Float = 1.04f,
-    focusBorderWidth: Dp = 2.5.dp,
+    focusBorderWidth: Dp = 2.75.dp,
     focusShape: Shape? = null,
     focusBorderColor: Color? = null,
     onLongClick: (() -> Unit)? = null,
@@ -87,7 +91,9 @@ fun Modifier.pressable(
     val view = LocalView.current
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
-    val focused by interaction.collectIsFocusedAsState()
+    var rawFocused by remember { mutableStateOf(false) }
+    LaunchedEffect(enabled) { if (!enabled) rawFocused = false }
+    val focused = enabled && rawFocused
     val reduced = rememberReducedMotion()
     val targetScale = when {
         pressed && !reduced -> pressedScale
@@ -96,23 +102,30 @@ fun Modifier.pressable(
     }
     val scale by animateFloatAsState(
         targetValue = targetScale,
-        animationSpec = spring(dampingRatio = 0.65f, stiffness = 1300f),
+        animationSpec = spring(dampingRatio = 0.68f, stiffness = 1400f),
         label = "pressScale",
     )
     val c = MaterialTheme.colorScheme
     val strokeColor = focusBorderColor ?: c.primary
+    val innerHalo = if (strokeColor.luminance() > 0.45f) Color.Black.copy(alpha = 0.72f) else Color.White.copy(alpha = 0.88f)
     val shape = focusShape ?: RoundedCornerShape(18.dp)
 
     val layer = this
+        .onFocusChanged { rawFocused = it.hasFocus || it.isFocused }
         .graphicsLayer {
             scaleX = scale
             scaleY = scale
-            if (focused) shadowElevation = 16f
+            if (focused) shadowElevation = 12f
         }
         .drawWithContent {
             drawContent()
             if (focused) {
                 val outline = shape.createOutline(size, layoutDirection, this)
+                drawOutline(
+                    outline = outline,
+                    color = innerHalo,
+                    style = Stroke(width = (focusBorderWidth + 1.5.dp).toPx()),
+                )
                 drawOutline(
                     outline = outline,
                     color = strokeColor,

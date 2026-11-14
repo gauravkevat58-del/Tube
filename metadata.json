@@ -1,6 +1,6 @@
 {
-  "name": "iTube",
-  "description": "Stream and play music and video with background playback and rich controls.",
+  "name": "iTube TV",
+  "description": "YouTube streaming app optimized for Android TV remote and D-pad navigation with background playback, playlists, Shorts, and YouTube Music feed.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

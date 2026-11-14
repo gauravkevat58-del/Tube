@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -115,128 +114,6 @@ fun HomeScreenSkeleton(modifier: Modifier = Modifier) {
     }
 }
 
-/** Music screen skeleton loading content. */
-@Composable
-fun MusicScreenSkeleton(modifier: Modifier = Modifier) {
-    val brush = shimmerBrush()
-    Column(modifier = modifier.fillMaxWidth().padding(top = 8.dp)) {
-        // Chips row placeholder
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            repeat(4) { i ->
-                Box(
-                    modifier = Modifier
-                        .width(if (i % 2 == 0) 72.dp else 90.dp)
-                        .height(34.dp)
-                        .clip(CircleShape)
-                        .background(brush)
-                )
-            }
-        }
-
-        Spacer(Modifier.height(20.dp))
-
-        // Quick Picks header placeholder
-        Box(
-            modifier = Modifier
-                .padding(horizontal = 16.dp)
-                .width(140.dp)
-                .height(22.dp)
-                .clip(RoundedCornerShape(6.dp))
-                .background(brush)
-        )
-
-        Spacer(Modifier.height(14.dp))
-
-        // Quick Picks 2-row items skeleton
-        Column(
-            modifier = Modifier.padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            repeat(4) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(52.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(brush)
-                    )
-                    Spacer(Modifier.width(14.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(0.7f)
-                                .height(15.dp)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(brush)
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(0.45f)
-                                .height(12.dp)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(brush)
-                        )
-                    }
-                }
-            }
-        }
-
-        Spacer(Modifier.height(26.dp))
-
-        // Section carousel header placeholder
-        Box(
-            modifier = Modifier
-                .padding(horizontal = 16.dp)
-                .width(180.dp)
-                .height(22.dp)
-                .clip(RoundedCornerShape(6.dp))
-                .background(brush)
-        )
-
-        Spacer(Modifier.height(14.dp))
-
-        // Section carousel cards skeleton
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            repeat(3) {
-                Column(modifier = Modifier.width(148.dp)) {
-                    Box(
-                        modifier = Modifier
-                            .size(148.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(brush)
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(0.8f)
-                            .height(14.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(brush)
-                    )
-                    Spacer(Modifier.height(5.dp))
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(0.5f)
-                            .height(11.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(brush)
-                    )
-                }
-            }
-        }
-    }
-}
-
 /** Skeleton placeholder for a compact VideoRow under the video player. */
 @Composable
 fun VideoRowSkeleton(modifier: Modifier = Modifier) {
@@ -269,31 +146,6 @@ fun VideoRowSkeleton(modifier: Modifier = Modifier) {
                     .fillMaxWidth(0.5f)
                     .height(11.dp)
                     .clip(RoundedCornerShape(4.dp))
-                    .background(brush)
-            )
-        }
-    }
-}
-
-/**
- * Shimmering skeleton lines for synced lyrics placeholder (AirBeats style).
- */
-@Composable
-fun LyricsSkeleton(modifier: Modifier = Modifier) {
-    val brush = shimmerBrush()
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = 24.dp, vertical = 32.dp),
-        verticalArrangement = Arrangement.spacedBy(28.dp)
-    ) {
-        val widths = listOf(0.6f, 0.85f, 0.45f, 0.75f, 0.55f, 0.8f, 0.5f, 0.7f, 0.65f)
-        widths.forEach { fraction ->
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(fraction)
-                    .height(28.dp)
-                    .clip(RoundedCornerShape(8.dp))
                     .background(brush)
             )
         }

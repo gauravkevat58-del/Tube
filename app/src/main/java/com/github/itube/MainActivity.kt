@@ -130,18 +130,6 @@ import androidx.compose.ui.window.Dialog
 import kotlin.math.roundToInt
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.launch
-import com.github.itube.ui.screens.MusicScreen
-import com.github.itube.ui.screens.CachedMusicScreen
-import com.github.itube.ui.screens.LikedMusicScreen
-import com.github.itube.ui.screens.iMusicArtistScreen
-import com.github.itube.ui.screens.iMusicPlaylistScreen
-import com.github.itube.ui.screens.iMusicMoodsAndGenresScreen
-import com.github.itube.MusicArtist
-import com.github.itube.MusicPlaylistRef
-import com.github.itube.ui.player.NewClassicMiniPlayer
-import com.github.itube.ui.player.IosStyledPlayer
-import com.github.itube.ui.player.LyricsV2Screen
-import com.github.itube.ui.player.MusicQueueSheet
 import com.github.itube.ui.components.EqualizerSheet
 import com.github.itube.ui.player.SleepTimerSheet
 import com.github.itube.ui.tv.TvHelper
@@ -170,7 +158,6 @@ class MainActivity : ComponentActivity() {
         }
         NewVideos.takeVideo(intent)?.let { NewVideos.opening = it }
         handleDownloadsIntent(intent)
-        MusicPlayerState.init(this)
         setContent { AirStreamTheme { AirStreamApp() } }
     }
 
@@ -213,18 +200,12 @@ class MainActivity : ComponentActivity() {
                     if (p?.current != null) {
                         p.togglePlay()
                         return true
-                    } else if (MusicPlayerState.currentTrack != null) {
-                        MusicPlayerState.togglePlayPause()
-                        return true
                     }
                 }
                 android.view.KeyEvent.KEYCODE_MEDIA_PLAY -> {
                     val p = PlayerState.activeInstance
                     if (p?.current != null) {
                         p.controller?.play()
-                        return true
-                    } else if (MusicPlayerState.currentTrack != null) {
-                        MusicPlayerState.resume()
                         return true
                     }
                 }
@@ -233,18 +214,12 @@ class MainActivity : ComponentActivity() {
                     if (p?.current != null) {
                         p.controller?.pause()
                         return true
-                    } else if (MusicPlayerState.currentTrack != null) {
-                        MusicPlayerState.pause()
-                        return true
                     }
                 }
                 android.view.KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
                     val p = PlayerState.activeInstance
                     if (p?.current != null) {
                         p.seekBy(10_000)
-                        return true
-                    } else if (MusicPlayerState.currentTrack != null) {
-                        MusicPlayerState.seekTo((MusicPlayerState.positionMs + 10_000L).coerceAtMost(MusicPlayerState.durationMs))
                         return true
                     }
                 }
@@ -253,18 +228,12 @@ class MainActivity : ComponentActivity() {
                     if (p?.current != null) {
                         p.seekBy(-10_000)
                         return true
-                    } else if (MusicPlayerState.currentTrack != null) {
-                        MusicPlayerState.seekTo((MusicPlayerState.positionMs - 10_000L).coerceAtLeast(0L))
-                        return true
                     }
                 }
                 android.view.KeyEvent.KEYCODE_MEDIA_STOP -> {
                     val p = PlayerState.activeInstance
                     if (p?.current != null) {
                         p.controller?.pause()
-                        return true
-                    } else if (MusicPlayerState.currentTrack != null) {
-                        MusicPlayerState.pause()
                         return true
                     }
                 }
@@ -273,18 +242,12 @@ class MainActivity : ComponentActivity() {
                     if (p?.current != null) {
                         p.playNextUp()
                         return true
-                    } else if (MusicPlayerState.currentTrack != null) {
-                        MusicPlayerState.skipNext()
-                        return true
                     }
                 }
                 android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
                     val p = PlayerState.activeInstance
                     if (p?.current != null) {
                         p.playPrevious()
-                        return true
-                    } else if (MusicPlayerState.currentTrack != null) {
-                        MusicPlayerState.skipPrevious()
                         return true
                     }
                 }
@@ -343,11 +306,6 @@ fun AirStreamApp() {
     var historyOpen by remember { mutableStateOf(false) }
     var openChannel by remember { mutableStateOf<String?>(null) }
     var openPublicCollection by remember { mutableStateOf<PublicCollection?>(null) }
-    var openMusicArtist by remember { mutableStateOf<MusicArtist?>(null) }
-    var openMusicPlaylist by remember { mutableStateOf<MusicPlaylistRef?>(null) }
-    var openMoodsAndGenres by remember { mutableStateOf(false) }
-    var cachedMusicOpen by remember { mutableStateOf(false) }
-    var likedMusicOpen by remember { mutableStateOf(false) }
     // Kept after closing so the page can slide out with its content.
     var channelState by remember { mutableStateOf<ChannelState?>(null) }
     var publicCollectionState by remember { mutableStateOf<PublicCollectionState?>(null) }
@@ -373,18 +331,9 @@ fun AirStreamApp() {
         player.open(video)
     }
 
-    // Mutual playback exclusion: playing music closes video mini-player; playing video closes music mini-player
     LaunchedEffect(player) {
-        player.onPlaybackStarted = {
-            MusicPlayerState.close()
-        }
-        MusicPlayerState.onPlaybackStarted = {
-            player.close()
-        }
         SleepTimerState.onTimerExpired = {
             player.controller?.pause()
-            MusicPlayerState.pause()
-            MusicPlayerState.companionVideoPlayer?.pause()
             player.actionMessage = "Sleep timer: playback paused"
         }
     }
@@ -435,7 +384,6 @@ fun AirStreamApp() {
     val playerOpen = player.current != null && player.expanded
     // On Shorts the app's video waits, paused, out of sight (no mini-player).
     val hasMini = player.current != null && tab != Tab.Shorts
-    val hasMusicMini = MusicPlayerState.currentTrack != null && tab != Tab.Shorts && !playerOpen
     val isTv = com.github.itube.ui.tv.rememberIsTv()
     // Lists scroll fully clear of the floating nav (and mini-player when present).
     val contentPadding = if (isTv) {
@@ -443,11 +391,11 @@ fun AirStreamApp() {
             start = 12.dp,
             end = 16.dp,
             top = 10.dp,
-            bottom = stackBottom + (if (hasMini) MiniHeight + MiniGap else if (hasMusicMini) 74.dp else 0.dp) + 20.dp,
+            bottom = stackBottom + (if (hasMini) MiniHeight + MiniGap else 0.dp) + 20.dp,
         )
     } else {
         PaddingValues(
-            bottom = stackBottom + NavHeight + (if (hasMini) MiniHeight + MiniGap else if (hasMusicMini) 74.dp else 0.dp) + 16.dp,
+            bottom = stackBottom + NavHeight + (if (hasMini) MiniHeight + MiniGap else 0.dp) + 16.dp,
         )
     }
 
@@ -494,11 +442,6 @@ fun AirStreamApp() {
     BackHandler(enabled = !player.expanded && openPublicCollection != null) { openPublicCollection = null }
     BackHandler(enabled = signingIn) { signingIn = false }
     BackHandler(enabled = !player.expanded && openChannel != null) { openChannel = null }
-    BackHandler(enabled = !player.expanded && openMusicArtist != null) { openMusicArtist = null }
-    BackHandler(enabled = !player.expanded && openMusicPlaylist != null) { openMusicPlaylist = null }
-    BackHandler(enabled = !player.expanded && openMoodsAndGenres) { openMoodsAndGenres = false }
-    BackHandler(enabled = !player.expanded && cachedMusicOpen) { cachedMusicOpen = false }
-    BackHandler(enabled = !player.expanded && likedMusicOpen) { likedMusicOpen = false }
     BackHandler(enabled = tab == Tab.Shorts && shorts.commentsOpen) { shorts.commentsOpen = false }
     // Registered last so it wins: in fullscreen on phone, Back returns to portrait first (which then
     // stops and closes on the next Back); on Android TV, leaving the video player stops playback and closes.
@@ -526,25 +469,17 @@ fun AirStreamApp() {
     // One progress turns the tab bar into the glass bar: 620 ms in, 460 ms out, both moving at once.
     val shortsMorph = remember { androidx.compose.animation.core.Animatable(if (tab == Tab.Shorts) 1f else 0f) }
     var resumeMain by remember { mutableStateOf(false) }
-    var resumeMusic by remember { mutableStateOf(false) }
     LaunchedEffect(tab) {
         if (tab == Tab.Shorts) {
             resumeMain = resumeMain || player.isPlaying
             player.controller?.pause()
             player.setVideoAside(true)
-
-            resumeMusic = resumeMusic || MusicPlayerState.isPlaying
-            MusicPlayerState.pause()
-
             shorts.enter()
         } else if (shorts.active) {
             shorts.leave()
             player.setVideoAside(false)
             if (resumeMain) player.controller?.play()
             resumeMain = false
-
-            if (resumeMusic) MusicPlayerState.resume()
-            resumeMusic = false
         }
     }
     // Shorts turned off (account sheet) while it was the tab: back to where it was opened from.
@@ -629,66 +564,14 @@ fun AirStreamApp() {
         val sharedSurface = remember(player) {
             androidx.compose.runtime.movableContentOf { m: Modifier -> VideoSurface(player.controller, m) }
         }
-        val musicMiniBottom = stackBottom + (if (isTv) 12.dp else NavHeight + 8.dp)
-        val musicCollapsedBound = musicMiniBottom + 66.dp
-        val musicExpandedBound = with(density) { rootConstraints.maxHeight.toDp() }
-        val musicSheetState = rememberBottomSheetState(
-            dismissedBound = 0.dp,
-            expandedBound = musicExpandedBound,
-            collapsedBound = musicCollapsedBound,
-            initialAnchor = when {
-                MusicPlayerState.currentTrack == null -> BottomSheetDismissedAnchor
-                MusicPlayerState.expanded -> BottomSheetExpandedAnchor
-                else -> BottomSheetCollapsedAnchor
-            }
-        )
-        LaunchedEffect(MusicPlayerState.expanded) {
-            if (MusicPlayerState.expanded && !musicSheetState.isExpanded) {
-                musicSheetState.expandSoft()
-            } else if (!MusicPlayerState.expanded && musicSheetState.isExpanded) {
-                musicSheetState.collapseSoft()
-            }
-        }
-        LaunchedEffect(musicSheetState.isExpanded) {
-            MusicPlayerState.expanded = musicSheetState.isExpanded
-        }
-        LaunchedEffect(MusicPlayerState.currentTrack?.id) {
-            if (MusicPlayerState.currentTrack != null) {
-                if (MusicPlayerState.expanded) musicSheetState.expandSoft() else musicSheetState.collapseSoft()
-            } else {
-                musicSheetState.dismiss()
-            }
-        }
-        val musicPlayerOpen = MusicPlayerState.currentTrack != null &&
-            tab != Tab.Shorts &&
-            !playerOpen &&
-            (MusicPlayerState.expanded || musicSheetState.progress > 0.25f)
-        var wasMusicPlayerOpen by remember { mutableStateOf(false) }
-        LaunchedEffect(musicPlayerOpen, isTv) {
-            if (wasMusicPlayerOpen && !musicPlayerOpen && isTv && !playerOpen && !showFullscreen && !showExitDialog) {
-                kotlinx.coroutines.delay(80)
-                if (!tvFocusBridge.focusContent()) {
-                    tvFocusBridge.focusRail()
-                }
-            }
-            wasMusicPlayerOpen = musicPlayerOpen
-        }
         val isAtRootHome = tab == Tab.Home &&
             !player.expanded &&
             !showFullscreen &&
-            !MusicPlayerState.expanded &&
-            !musicPlayerOpen &&
-            (MusicPlayerState.currentTrack == null || musicSheetState.isCollapsed || musicSheetState.isDismissed) &&
             openPlaylist == null &&
             !downloadsOpen &&
             !historyOpen &&
             openChannel == null &&
             openPublicCollection == null &&
-            openMusicArtist == null &&
-            openMusicPlaylist == null &&
-            !openMoodsAndGenres &&
-            !cachedMusicOpen &&
-            !likedMusicOpen &&
             !signingIn &&
             !accountSheet &&
             optionsFor == null &&
@@ -703,11 +586,6 @@ fun AirStreamApp() {
         BackHandler(enabled = isAtRootHome) { showExitDialog = true }
 
         val activeTvRoute = when {
-            likedMusicOpen -> "overlay:likedMusic"
-            cachedMusicOpen -> "overlay:cachedMusic"
-            openMoodsAndGenres -> "overlay:moods"
-            openMusicPlaylist != null -> "overlay:musicPlaylist"
-            openMusicArtist != null -> "overlay:musicArtist"
             openPublicCollection != null -> "overlay:collection"
             openChannel != null -> "overlay:channel"
             historyOpen -> "overlay:history"
@@ -716,6 +594,36 @@ fun AirStreamApp() {
             else -> "tab:${tab.name}"
         }
         SideEffect { tvFocusBridge.activeRoute = activeTvRoute }
+        val backgroundInteractive = !playerOpen &&
+            !showFullscreen &&
+            !showExitDialog &&
+            !accountSheet &&
+            !signingIn &&
+            optionsFor == null &&
+            playlistOptionsFor == null &&
+            collectionOptionsFor == null &&
+            player.sheet == null &&
+            player.playlistTarget == null &&
+            CrashReports.pendingReport == null &&
+            !(automaticUpdateNotes && availableUpdate != null)
+
+        var previousTvRoute by remember { mutableStateOf<String?>(null) }
+        var wasBackgroundInteractive by remember { mutableStateOf(backgroundInteractive) }
+        LaunchedEffect(isTv, activeTvRoute, backgroundInteractive) {
+            val prevRoute = previousTvRoute
+            val prevInteractive = wasBackgroundInteractive
+            previousTvRoute = activeTvRoute
+            wasBackgroundInteractive = backgroundInteractive
+            if (!isTv || !backgroundInteractive) return@LaunchedEffect
+            val routeTransition = prevRoute == null ||
+                (prevRoute != activeTvRoute && (activeTvRoute.startsWith("overlay:") || prevRoute.startsWith("overlay:")))
+            val recoveredFromModal = !prevInteractive
+            if (routeTransition || recoveredFromModal) {
+                kotlinx.coroutines.delay(55)
+                tvFocusBridge.focusContentOrHeaderOrRail()
+            }
+        }
+
         CompositionLocalProvider(
             com.github.itube.ui.tv.LocalIsTv provides isTv,
             com.github.itube.ui.tv.LocalTvFocusBridge provides (if (isTv) tvFocusBridge else null),
@@ -738,17 +646,22 @@ fun AirStreamApp() {
                 .fillMaxSize()
                 .then(if (popupBlurRadius > 0.dp) Modifier.blur(popupBlurRadius) else Modifier),
         ) {
-        val backgroundInteractive = !musicPlayerOpen &&
-            !playerOpen &&
-            !showFullscreen &&
-            !showExitDialog &&
-            !accountSheet &&
-            !signingIn
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .focusProperties { canFocus = backgroundInteractive }
         ) {
+        fun playCollection(collection: PublicCollection) {
+            scope.launch {
+                player.actionMessage = "Loading ${collection.title}…"
+                runCatching { YouTube.publicCollection(collection.url, collection.isAlbum).videos }
+                    .onSuccess { videos ->
+                        if (videos.isEmpty()) player.actionMessage = "This playlist has no playable videos."
+                        else player.openPlaylist(videos, 0)
+                    }
+                    .onFailure { player.actionMessage = "Couldn't load ${collection.title}." }
+            }
+        }
         AnimatedContent(
             targetState = tab,
             modifier = Modifier.padding(
@@ -769,34 +682,18 @@ fun AirStreamApp() {
                         shorts.openFromHome(short.id)
                         tab = Tab.Shorts
                     },
-                    onPlayCollection = { collection ->
-                        scope.launch {
-                            player.actionMessage = "Loading ${collection.title}…"
-                            runCatching { YouTube.publicCollection(collection.url, collection.isAlbum).videos }
-                                .onSuccess { videos ->
-                                    if (videos.isEmpty()) player.actionMessage = "This playlist has no playable videos."
-                                    else player.openPlaylist(videos, 0)
-                                }
-                                .onFailure { player.actionMessage = "Couldn't load ${collection.title}." }
-                        }
-                    },
-                    onSearch = { search.selectCategory(SearchCategory.Videos); tab = Tab.Search },
+                    onPlayCollection = ::playCollection,
+                    onSearch = { tab = Tab.Search },
                     onSignIn = { signingIn = true }, onAccount = { accountSheet = true },
                     scrollToTop = scrollToTop[Tab.Home] ?: 0,
                 )
-                Tab.Music -> MusicScreen(
+                Tab.Music -> MusicFeedScreen(
+                    lib = lib,
                     contentPadding = contentPadding,
-                    onOpenMusic = { track, queue -> MusicPlayerState.play(track, queue) },
-                    onArtistClick = { artist ->
-                        ListeningProfile.recordArtistView(artist)
-                        openMusicArtist = artist
-                    },
-                    onPlaylistClick = { playlistRef ->
-                        ListeningProfile.recordPlaylistOrAlbumView(playlistRef)
-                        openMusicPlaylist = playlistRef
-                    },
-                    onMoodsClick = { openMoodsAndGenres = true },
-                    onSearch = { search.selectCategory(SearchCategory.Music); tab = Tab.Search },
+                    onOpen = ::openVideo,
+                    onPlayCollection = ::playCollection,
+                    onExploreHome = { tab = Tab.Home },
+                    onSignIn = { signingIn = true },
                     onAccount = { accountSheet = true },
                     scrollToTop = scrollToTop[Tab.Music] ?: 0,
                 )
@@ -842,14 +739,6 @@ fun AirStreamApp() {
                             )
                         }
                     },
-                    onMusicArtistClick = { artist ->
-                        ListeningProfile.recordArtistView(artist)
-                        openMusicArtist = artist
-                    },
-                    onMusicPlaylistClick = { playlist ->
-                        ListeningProfile.recordPlaylistOrAlbumView(playlist)
-                        openMusicPlaylist = playlist
-                    },
                     onSettings = { accountSheet = true },
                     scrollToTop = scrollToTop[t] ?: 0,
                 )
@@ -865,8 +754,6 @@ fun AirStreamApp() {
                     onOpenHistory = { historyOpen = true },
                     onOpenPlaylist = { openPlaylist = it },
                     onOpenDownloads = { downloadsOpen = true },
-                    onOpenCachedMusic = { cachedMusicOpen = true },
-                    onOpenLikedMusic = { likedMusicOpen = true },
                     onOpenCollection = ::showPublicCollection,
                     onSignIn = { signingIn = true },
                     onAccount = { accountSheet = true },
@@ -993,110 +880,6 @@ fun AirStreamApp() {
                     onOpenChannel = ::showChannel,
                 )
                 }
-            }
-        }
-
-        // Flow Music screens: Artist, Playlist/Album, Moods & Genres
-        AnimatedVisibility(
-            visible = openMusicArtist != null,
-            enter = if (reduced) fadeIn(snap()) else slideInHorizontally(tween(340, easing = Motion.Emphasized)) { it } + fadeIn(tween(120)),
-            exit = if (reduced) fadeOut(snap()) else slideOutHorizontally(tween(300, easing = Motion.Emphasized)) { it } + fadeOut(tween(220)),
-        ) {
-            openMusicArtist?.let { artist ->
-                Box(Modifier.fillMaxSize().padding(start = if (isTv) com.github.itube.ui.tv.TvRailWidth else 0.dp)) {
-                    iMusicArtistScreen(
-                        channelId = artist.id,
-                        initialName = artist.name,
-                        initialThumbnail = artist.thumbnailUrl,
-                        onBackClick = { openMusicArtist = null },
-                        onTrackClick = { track, queue -> MusicPlayerState.play(track, queue) },
-                        onAlbumClick = { ref ->
-                            ListeningProfile.recordPlaylistOrAlbumView(ref)
-                            openMusicPlaylist = ref
-                        },
-                        onArtistClick = { nextArtistId ->
-                            val a = MusicArtist(id = nextArtistId, name = "")
-                            ListeningProfile.recordArtistView(a)
-                            openMusicArtist = a
-                        },
-                    )
-                }
-            }
-        }
-
-        AnimatedVisibility(
-            visible = openMusicPlaylist != null,
-            enter = if (reduced) fadeIn(snap()) else slideInHorizontally(tween(340, easing = Motion.Emphasized)) { it } + fadeIn(tween(120)),
-            exit = if (reduced) fadeOut(snap()) else slideOutHorizontally(tween(300, easing = Motion.Emphasized)) { it } + fadeOut(tween(220)),
-        ) {
-            openMusicPlaylist?.let { pl ->
-                Box(Modifier.fillMaxSize().padding(start = if (isTv) com.github.itube.ui.tv.TvRailWidth else 0.dp)) {
-                    iMusicPlaylistScreen(
-                        playlistId = pl.id,
-                        initialTitle = pl.title,
-                        initialAuthor = pl.author,
-                        initialThumbnail = pl.thumbnailUrl,
-                        isAlbum = pl.isAlbum,
-                        onBackClick = { openMusicPlaylist = null },
-                        onTrackClick = { track, queue -> MusicPlayerState.play(track, queue) },
-                        onArtistClick = { artistId ->
-                            val a = MusicArtist(id = artistId, name = "")
-                            ListeningProfile.recordArtistView(a)
-                            openMusicArtist = a
-                        },
-                    )
-                }
-            }
-        }
-
-        AnimatedVisibility(
-            visible = openMoodsAndGenres,
-            enter = if (reduced) fadeIn(snap()) else slideInHorizontally(tween(340, easing = Motion.Emphasized)) { it } + fadeIn(tween(120)),
-            exit = if (reduced) fadeOut(snap()) else slideOutHorizontally(tween(300, easing = Motion.Emphasized)) { it } + fadeOut(tween(220)),
-        ) {
-            Box(Modifier.fillMaxSize().padding(start = if (isTv) com.github.itube.ui.tv.TvRailWidth else 0.dp)) {
-                iMusicMoodsAndGenresScreen(
-                    onBackClick = { openMoodsAndGenres = false },
-                    onMoodClick = { mood ->
-                        openMoodsAndGenres = false
-                        search.selectCategory(SearchCategory.Music)
-                        search.query = mood.title
-                        search.submit()
-                        tab = Tab.Search
-                    },
-                )
-            }
-        }
-
-        AnimatedVisibility(
-            visible = cachedMusicOpen,
-            enter = if (reduced) fadeIn(snap()) else slideInHorizontally(tween(340, easing = Motion.Emphasized)) { it } + fadeIn(tween(120)),
-            exit = if (reduced) fadeOut(snap()) else slideOutHorizontally(tween(300, easing = Motion.Emphasized)) { it } + fadeOut(tween(220)),
-        ) {
-            Box(Modifier.fillMaxSize().padding(start = if (isTv && !playerOpen && !showFullscreen) com.github.itube.ui.tv.TvRailWidth else 0.dp)) {
-            CachedMusicScreen(
-                contentPadding = contentPadding,
-                onBack = { cachedMusicOpen = false },
-                onOpenMusic = { track, queue ->
-                    MusicPlayerState.play(track, queue)
-                }
-            )
-            }
-        }
-
-        AnimatedVisibility(
-            visible = likedMusicOpen,
-            enter = if (reduced) fadeIn(snap()) else slideInHorizontally(tween(340, easing = Motion.Emphasized)) { it } + fadeIn(tween(120)),
-            exit = if (reduced) fadeOut(snap()) else slideOutHorizontally(tween(300, easing = Motion.Emphasized)) { it } + fadeOut(tween(220)),
-        ) {
-            Box(Modifier.fillMaxSize().padding(start = if (isTv && !playerOpen && !showFullscreen) com.github.itube.ui.tv.TvRailWidth else 0.dp)) {
-            LikedMusicScreen(
-                contentPadding = contentPadding,
-                onBack = { likedMusicOpen = false },
-                onOpenMusic = { track, queue ->
-                    MusicPlayerState.play(track, queue)
-                }
-            )
             }
         }
 
@@ -1234,74 +1017,18 @@ fun AirStreamApp() {
                 },
             )
         }
-        // ── Dedicated Pop-up Based Music Player ──
-        if (MusicPlayerState.currentTrack != null && tab != Tab.Shorts && !playerOpen) {
-            MusicBottomSheet(
-                state = musicSheetState,
-                onDismiss = {
-                    // Swiping down mini player stops playback and closes player (just like AirBeats)
-                    MusicPlayerState.close()
-                },
-                collapsedContent = {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(start = if (isTv) com.github.itube.ui.tv.TvRailWidth else 0.dp),
-                        contentAlignment = if (isTv) Alignment.BottomEnd else Alignment.BottomCenter
-                    ) {
-                        NewClassicMiniPlayer(
-                            modifier = Modifier
-                                .padding(bottom = musicMiniBottom)
-                                .widthIn(max = if (isTv) 460.dp else NavWidth + 24.dp)
-                                .sheetDragGesture(musicSheetState) {
-                                    MusicPlayerState.close()
-                                }
-                                .graphicsLayer {
-                                    translationY = barAside * (NavHeight + stackBottom + 24.dp).toPx()
-                                    alpha = 1f - barAside
-                                },
-                            onExpand = {
-                                musicSheetState.expandSoft()
-                            }
-                        )
-                    }
-                },
-                content = {
-                    IosStyledPlayer(
-                        onCollapse = {
-                            musicSheetState.collapseSoft()
-                        },
-                        onSwitchToVideo = { videoItem, posMs ->
-                            musicSheetState.collapseSoft()
-                            MusicPlayerState.close()
-                            player.open(videoItem, expand = true, startPositionMs = posMs)
-                        },
-                        onAddToPlaylist = player::openPlaylists,
-                        onArtistClick = { artist ->
-                            musicSheetState.collapseSoft()
-                            ListeningProfile.recordArtistView(artist)
-                            openMusicArtist = artist
-                        },
-                    )
-                }
-            )
-        }
-
         if (!isTv) {
             NavPill(
                 selected = tab,
                 onSelect = { selected ->
                     when {
                         // Re-tapping the current tab: back out of a playlist, else scroll to top.
-                        selected == tab && openMusicArtist != null -> openMusicArtist = null
-                        selected == tab && openMusicPlaylist != null -> openMusicPlaylist = null
-                        selected == tab && openMoodsAndGenres -> openMoodsAndGenres = false
                         selected == tab && openChannel != null -> openChannel = null
                         selected == tab && openPlaylist != null -> openPlaylist = null
                         selected == tab -> scrollToTop[selected] = (scrollToTop[selected] ?: 0) + 1
                         else -> {
                             if (selected == Tab.Shorts) shortsFrom = tab
-                            openPlaylist = null; openChannel = null; openMusicArtist = null; openMusicPlaylist = null; openMoodsAndGenres = false; tab = selected
+                            openPlaylist = null; openChannel = null; tab = selected
                         }
                     }
                 },
@@ -1311,15 +1038,13 @@ fun AirStreamApp() {
                 bar = playerBar,
                 onFullscreen = { toggleFullscreen() },
                 shorts = { shortsMorph.value },
-                tabsEnabled = !shortsShown && (MusicPlayerState.currentTrack == null || musicSheetState.progress < 0.1f),
+                tabsEnabled = !shortsShown,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(start = 16.dp, end = 16.dp, bottom = stackBottom)
                     .graphicsLayer {
-                        // Moved fully off screen when player is open or music player is expanded
-                        val musicAway = if (MusicPlayerState.currentTrack != null) musicSheetState.progress else 0f
                         val videoAway = if (playerOpen) 1f else ramp(morph.progress.value, 0f, 0.5f)
-                        val away = maxOf(barAside, videoAway, musicAway)
+                        val away = maxOf(barAside, videoAway)
                         translationY = away * (NavHeight + PlayerBarRaise + stackBottom + 24.dp).toPx()
                         alpha = 1f - away
                     },
@@ -1330,23 +1055,19 @@ fun AirStreamApp() {
                     selectedTab = tab,
                     onSelectTab = { selected ->
                         when {
-                            selected == tab && openMusicArtist != null -> openMusicArtist = null
-                            selected == tab && openMusicPlaylist != null -> openMusicPlaylist = null
-                            selected == tab && openMoodsAndGenres -> openMoodsAndGenres = false
                             selected == tab && openChannel != null -> openChannel = null
                             selected == tab && openPlaylist != null -> openPlaylist = null
                             selected == tab -> scrollToTop[selected] = (scrollToTop[selected] ?: 0) + 1
                             else -> {
                                 if (selected == Tab.Shorts) shortsFrom = tab
-                                openPlaylist = null; openChannel = null; openMusicArtist = null; openMusicPlaylist = null; openMoodsAndGenres = false; tab = selected
+                                openPlaylist = null; openChannel = null; tab = selected
                             }
                         }
                     },
                     onAccount = { accountSheet = true },
                     modifier = Modifier
                         .align(Alignment.CenterStart)
-                        .focusProperties { canFocus = !musicPlayerOpen && !showExitDialog && !accountSheet && !signingIn }
-                        .graphicsLayer { alpha = if (musicPlayerOpen) 0f else 1f },
+                        .focusProperties { canFocus = backgroundInteractive },
                 )
             }
         }
@@ -1382,18 +1103,7 @@ fun AirStreamApp() {
         if (shortsShown) ShortsChannelMenu(shorts, bottom = stackBottom + GlassHeight + 10.dp, onChannel = ::showChannel)
 
         if (showFullscreen) FullscreenPlayer(player, onExit = { orientation.exitFullscreen() })
-
-        // ── Fullscreen Lyrics v2 Screen (Now integrated smoothly inside IosStyledPlayer) ──
-        AnimatedVisibility(
-            visible = false && MusicPlayerState.lyricsOpen,
-            enter = slideInVertically(tween(360, easing = Motion.Emphasized)) { it },
-            exit = slideOutVertically(tween(300, easing = Motion.Emphasized)) { it },
-        ) {
-            LyricsV2Screen(onDismiss = { MusicPlayerState.lyricsOpen = false })
         }
-        }
-
-        // In-player queue is handled directly inside IosStyledPlayer
 
         if (accountSheet) {
             AccountSheet(
@@ -1432,6 +1142,7 @@ fun AirStreamApp() {
                 video,
                 player,
                 onDismiss = { optionsFor = null; optionsPlaylistFor = null },
+                onOpenChannel = { url -> showChannel(url) },
                 onRemoveFromPlaylist = playlist?.let { currentPlaylist ->
                     {
                         playlistFeed?.removePlaylistVideo(currentPlaylist.id, video)
@@ -1500,10 +1211,8 @@ fun AirStreamApp() {
                 onConfirmExit = {
                     showExitDialog = false
                     player.close()
-                    MusicPlayerState.close()
                     shorts.leave()
                     activity.stopService(Intent(activity, PlaybackService::class.java))
-                    activity.stopService(Intent(activity, MusicPlaybackService::class.java))
                     activity.finishAndRemoveTask()
                 },
             )
@@ -1553,7 +1262,7 @@ private fun ExitAppDialog(
                     )
                 }
                 Text(
-                    text = "Exit iTube?",
+                    text = "Exit iTube TV?",
                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                     color = c.onSurface,
                     textAlign = TextAlign.Center,

@@ -16,7 +16,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -80,10 +79,6 @@ fun TvNavRail(
     val bridge = LocalTvFocusBridge.current
     var railHasFocus by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
-        bridge?.focusRail()
-    }
-
     val railWidth by animateDpAsState(
         targetValue = if (railHasFocus) TvRailExpandedWidth else TvRailWidth,
         animationSpec = spring(dampingRatio = 0.8f, stiffness = 900f),
@@ -99,7 +94,7 @@ fun TvNavRail(
             .focusProperties {
                 exit = { direction ->
                     if (direction == FocusDirection.Right) {
-                        bridge?.currentEntryRequester() ?: FocusRequester.Default
+                        bridge?.currentEntryRequester() ?: bridge?.currentHeaderRequester() ?: FocusRequester.Default
                     } else {
                         FocusRequester.Default
                     }
@@ -144,9 +139,9 @@ fun TvNavRail(
                     if (railHasFocus) {
                         Spacer(Modifier.width(12.dp))
                         Text(
-                            text = "iTube",
+                            text = "iTube TV",
                             color = c.onSurface,
-                            fontSize = 20.sp,
+                            fontSize = 19.sp,
                             fontWeight = FontWeight.ExtraBold,
                             maxLines = 1,
                         )
@@ -189,7 +184,7 @@ fun TvNavRail(
                 horizontalAlignment = if (railHasFocus) Alignment.Start else Alignment.CenterHorizontally,
             ) {
                 val interaction = remember { MutableInteractionSource() }
-                val isFocused by interaction.collectIsFocusedAsState()
+                var isFocused by remember { mutableStateOf(false) }
                 val view = LocalView.current
 
                 Row(
@@ -198,13 +193,14 @@ fun TvNavRail(
                         .height(48.dp)
                         .clip(RoundedCornerShape(14.dp))
                         .background(
-                            if (isFocused) c.primary.copy(alpha = 0.22f)
+                            if (isFocused) c.primary.copy(alpha = 0.24f)
                             else Color.Transparent
                         )
                         .then(
                             if (isFocused) Modifier.border(2.5.dp, c.primary, RoundedCornerShape(14.dp))
                             else Modifier
                         )
+                        .onFocusChanged { isFocused = it.hasFocus || it.isFocused }
                         .clickable(
                             interactionSource = interaction,
                             indication = null,
@@ -249,12 +245,12 @@ private fun TvNavRailItem(
 ) {
     val c = MaterialTheme.colorScheme
     val interaction = remember { MutableInteractionSource() }
-    val isFocused by interaction.collectIsFocusedAsState()
+    var isFocused by remember { mutableStateOf(false) }
     val view = LocalView.current
 
     val scale by animateFloatAsState(
-        targetValue = if (isFocused) 1.08f else 1f,
-        animationSpec = spring(dampingRatio = 0.65f, stiffness = 1200f),
+        targetValue = if (isFocused) 1.06f else 1f,
+        animationSpec = spring(dampingRatio = 0.68f, stiffness = 1350f),
         label = "tvRailItemScale",
     )
 
@@ -285,6 +281,7 @@ private fun TvNavRailItem(
                     Modifier.border(2.5.dp, Color.White, RoundedCornerShape(16.dp))
                 } else Modifier
             )
+            .onFocusChanged { isFocused = it.hasFocus || it.isFocused }
             .clickable(
                 interactionSource = interaction,
                 indication = null,

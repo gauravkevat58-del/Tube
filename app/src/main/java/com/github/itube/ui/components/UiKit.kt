@@ -134,30 +134,15 @@ fun ScreenHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (brandMark) {
-            val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-            if (title == "iMusic") {
-                Image(
-                    painter = painterResource(if (dark) R.drawable.imusic_dark else R.drawable.imusic),
-                    contentDescription = "iMusic",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.size(width = 56.dp, height = 37.dp),
-                )
-            } else {
-                BrandMark()
-            }
+            BrandMark()
             Spacer(Modifier.width(4.dp))
         }
         val headerTitle = buildAnnotatedString {
-            if (brandMark && title == "iTube") {
+            if (brandMark && (title == "iTube" || title == "iTube TV")) {
                 pushStyle(SpanStyle(color = Color(0xFFFF0000)))
                 append("i")
                 pop()
-                append("Tube")
-            } else if (brandMark && title == "iMusic") {
-                pushStyle(SpanStyle(color = Color(0xFFFF0000)))
-                append("i")
-                pop()
-                append("Music")
+                append(if (title == "iTube TV") "Tube TV" else "Tube")
             } else {
                 append(title)
             }
@@ -197,7 +182,7 @@ fun BrandMark() {
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     Image(
         painter = painterResource(if (dark) R.drawable.itube_dark else R.drawable.itube),
-        contentDescription = "iTube",
+        contentDescription = "iTube TV",
         contentScale = ContentScale.Fit,
         modifier = Modifier.size(width = 56.dp, height = 37.dp),
     )
@@ -345,7 +330,8 @@ fun ChannelAvatar(url: String?, name: String, size: Int = 40) {
 fun VideoCard(video: VideoItem, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val c = MaterialTheme.colorScheme
     val menu = LocalVideoMenu.current
-    val shape = RoundedCornerShape(28.dp)
+    val isTv = LocalIsTv.current
+    val shape = RoundedCornerShape(26.dp)
     Column(
         modifier = modifier
             .padding(horizontal = 6.dp, vertical = 7.dp)
@@ -354,17 +340,22 @@ fun VideoCard(video: VideoItem, onClick: () -> Unit, modifier: Modifier = Modifi
             .pressable(pressedScale = 0.97f, focusScale = 1.03f, focusShape = shape, onLongClick = { menu(video) }, onClick = onClick)
             .clip(shape)
             .background(c.surfaceContainerLow)
-            .padding(5.dp),
+            .border(0.75.dp, c.outlineVariant.copy(alpha = 0.28f), shape)
+            .padding(6.dp),
     ) {
         Box {
-            Thumbnail(video.thumbnail, Modifier.fillMaxWidth().aspectRatio(16f / 9f), radius = 23)
+            Thumbnail(video.thumbnail, Modifier.fillMaxWidth().aspectRatio(16f / 9f), radius = 21)
             DurationPill(video.durationSec, Modifier.align(Alignment.BottomEnd).padding(10.dp))
             ResumeBar(video.id, Modifier.align(Alignment.BottomStart))
         }
         Row(modifier = Modifier.padding(start = 8.dp, end = 6.dp, top = 12.dp, bottom = 10.dp)) {
             val openChannel = LocalChannelOpener.current
-            Box(Modifier.pressable(enabled = video.channelUrl != null, focusShape = CircleShape) { video.channelUrl?.let(openChannel) }) {
+            if (isTv) {
                 ChannelAvatar(video.avatar, video.channel)
+            } else {
+                Box(Modifier.pressable(enabled = video.channelUrl != null, focusShape = CircleShape) { video.channelUrl?.let(openChannel) }) {
+                    ChannelAvatar(video.avatar, video.channel)
+                }
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {

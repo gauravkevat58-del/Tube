@@ -1,5 +1,6 @@
 package com.github.itube
 
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -294,8 +295,12 @@ fun FeedList(
     val list = rememberScrollToTop(scrollToTop)
     val displayVideos = videosOverride ?: feed.videos
     val firstVideoId = displayVideos.firstOrNull()?.id
-    // Fresh content always starts at the top (first load and every refresh).
-    LaunchedEffect(feed.generation) { list.scrollToItem(0) }
+    // Fresh content always starts at the top on refresh without jolting focus on initial load.
+    LaunchedEffect(feed.generation) {
+        if (feed.generation > 0 && list.firstVisibleItemIndex > 0) {
+            list.scrollToItem(0)
+        }
+    }
     val nearEnd by remember {
         derivedStateOf {
             val last = list.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
@@ -433,7 +438,15 @@ fun FeedList(
                 )
             }
             feed.loading && feed.videos.isEmpty() -> item {
-                HomeScreenSkeleton()
+                Box(
+                    modifier = if (isTv && entryRoute != null) {
+                        Modifier.tvContentEntry(entryRoute, centeredEmptyState = true).focusable()
+                    } else {
+                        Modifier
+                    },
+                ) {
+                    HomeScreenSkeleton()
+                }
             }
             feed.loading || feed.hasMore -> item {
                 Box(Modifier.fillMaxWidth().padding(28.dp), Alignment.Center) {

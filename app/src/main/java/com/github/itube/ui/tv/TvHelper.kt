@@ -29,6 +29,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -97,6 +98,8 @@ class TvFocusBridge {
             true
         }.getOrDefault(false)
     }
+
+    fun focusContentOrHeaderOrRail(): Boolean = focusContent() || focusHeader() || focusRail()
 }
 
 @Composable
@@ -160,31 +163,37 @@ fun tvGridColumns(maxWidth: Dp, minColumnWidth: Dp = 270.dp, maxColumns: Int = 4
  */
 fun Modifier.tvFocusRing(
     shape: Shape = RoundedCornerShape(16.dp),
-    focusScale: Float = 1.05f,
-    borderWidth: Dp = 2.5.dp,
+    focusScale: Float = 1.04f,
+    borderWidth: Dp = 2.75.dp,
     borderColor: Color? = null,
     addFocusable: Boolean = false,
 ): Modifier = composed {
     var focused by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
         targetValue = if (focused) focusScale else 1f,
-        animationSpec = spring(dampingRatio = 0.65f, stiffness = 1200f),
+        animationSpec = spring(dampingRatio = 0.68f, stiffness = 1350f),
         label = "tvFocusScale",
     )
     val c = MaterialTheme.colorScheme
     val strokeColor = borderColor ?: c.primary
+    val outerHalo = if (strokeColor.luminance() > 0.45f) Color.Black.copy(alpha = 0.72f) else Color.White.copy(alpha = 0.88f)
 
     this
-        .onFocusChanged { focused = it.hasFocus }
+        .onFocusChanged { focused = it.hasFocus || it.isFocused }
         .graphicsLayer {
             scaleX = scale
             scaleY = scale
-            if (focused) shadowElevation = 16f
+            if (focused) shadowElevation = 12f
         }
         .drawWithContent {
             drawContent()
             if (focused) {
                 val outline = shape.createOutline(size, layoutDirection, this)
+                drawOutline(
+                    outline = outline,
+                    color = outerHalo,
+                    style = Stroke(width = (borderWidth + 1.5.dp).toPx()),
+                )
                 drawOutline(
                     outline = outline,
                     color = strokeColor,
