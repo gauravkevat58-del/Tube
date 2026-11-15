@@ -35,6 +35,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
@@ -45,38 +46,100 @@ val LocalTvFocusBridge = compositionLocalOf<TvFocusBridge?> { null }
 
 @Stable
 class TvFocusBridge {
+    internal data class EntrySpec(
+        val key: Any,
+        val requester: FocusRequester,
+        val priority: Int,
+        val centeredEmptyState: Boolean,
+        val isAttached: () -> Boolean,
+        val sequence: Long,
+    )
+
+    private data class HeaderSpec(
+        val requester: FocusRequester,
+        val isAttached: () -> Boolean,
+    )
+
     val railRequester = FocusRequester()
     var activeRoute by mutableStateOf("tab:Home")
-    private val routeEntries = mutableStateMapOf<String, FocusRequester>()
-    private val routeHeaders = mutableStateMapOf<String, FocusRequester>()
-    private val routeCenteredEmpty = mutableStateMapOf<String, Boolean>()
 
-    fun registerEntry(route: String, requester: FocusRequester, centeredEmptyState: Boolean) {
-        routeEntries[route] = requester
-        routeCenteredEmpty[route] = centeredEmptyState
+    private var seq = 0L
+    private val routeEntries = mutableStateMapOf<String, MutableList<EntrySpec>>()
+    private val routeHeaders = mutableStateMapOf<String, HeaderSpec>()
+
+    fun registerEntry(
+        route: String,
+        requester: FocusRequester,
+        centeredEmptyState: Boolean,
+        priority: Int = 0,
+        key: Any = requester,
+        isAttached: () -> Boolean = { true },
+    ) {
+        val list = routeEntries.getOrPut(route) { mutableListOf() }
+        list.removeAll { it.key == key || it.requester === requester }
+        list.add(
+            EntrySpec(
+                key = key,
+                requester = requester,
+                priority = priority,
+                centeredEmptyState = centeredEmptyState,
+                isAttached = isAttached,
+                sequence = ++seq,
+            ),
+        )
     }
 
-    fun unregisterEntry(route: String, requester: FocusRequester) {
-        if (routeEntries[route] === requester) {
-            routeEntries.remove(route)
-            routeCenteredEmpty.remove(route)
-        }
+    fun unregisterEntry(route: String, requester: FocusRequester, key: Any = requester) {
+        val list = routeEntries[route] ?: return
+        list.removeAll { it.key == key || it.requester === requester }
+        if (list.isEmpty()) routeEntries.remove(route)
     }
 
-    fun registerHeader(route: String, requester: FocusRequester) {
-        routeHeaders[route] = requester
+    fun registerHeader(
+        route: String,
+        requester: FocusRequester,
+        isAttached: () -> Boolean = { true },
+    ) {
+        routeHeaders[route] = HeaderSpec(requester, isAttached)
     }
 
     fun unregisterHeader(route: String, requester: FocusRequester) {
-        if (routeHeaders[route] === requester) routeHeaders.remove(route)
+        val existing = routeHeaders[route]
+        if (existing != null && existing.requester === requester) {
+            routeHeaders.remove(route)
+        }
     }
 
+    internal fun orderedAttachedEntries(route: String = activeRoute): List<EntrySpec> =
+        routeEntries[route]
+            .orEmpty()
+            .filter { it.isAttached() }
+            .sortedWith(compareBy<EntrySpec> { it.priority }.thenBy { it.sequence })
+
     val isActiveCenteredEmptyState: Boolean
-        get() = routeCenteredEmpty[activeRoute] == true
+        get() {
+            val attached = orderedAttachedEntries(activeRoute)
+            return attached.firstOrNull()?.centeredEmptyState == true
+        }
 
-    fun currentEntryRequester(): FocusRequester? = routeEntries[activeRoute]
+    fun currentEntryRequester(): FocusRequester? =
+        orderedAttachedEntries(activeRoute).firstOrNull()?.requester
 
-    fun currentHeaderRequester(): FocusRequester? = routeHeaders[activeRoute]
+    fun currentHeaderRequester(): FocusRequester? =
+        routeHeaders[activeRoute]?.takeIf { it.isAttached() }?.requester
+
+    /**
+     * Returns a verified attached target when exiting the TV nav rail rightwards, or null so
+     * Compose's geometric 2D focus search lands on the closest scrolled content item directly.
+     */
+    fun exitToContentRequester(): FocusRequester? {
+        val attached = orderedAttachedEntries(activeRoute)
+        val first = attached.firstOrNull()
+        if (first != null && (first.centeredEmptyState || first.priority <= 10)) {
+            return first.requester
+        }
+        return if (attached.isEmpty()) currentHeaderRequester() else null
+    }
 
     fun focusRail(): Boolean = runCatching {
         railRequester.requestFocus()
@@ -84,15 +147,16 @@ class TvFocusBridge {
     }.getOrDefault(false)
 
     fun focusContent(): Boolean {
-        val req = routeEntries[activeRoute] ?: return false
-        return runCatching {
-            req.requestFocus()
-            true
-        }.getOrDefault(false)
+        for (entry in orderedAttachedEntries(activeRoute)) {
+            if (runCatching { entry.requester.requestFocus(); true }.getOrDefault(false)) {
+                return true
+            }
+        }
+        return false
     }
 
     fun focusHeader(): Boolean {
-        val req = routeHeaders[activeRoute] ?: return false
+        val req = currentHeaderRequester() ?: return false
         return runCatching {
             req.requestFocus()
             true
@@ -106,18 +170,31 @@ class TvFocusBridge {
 fun Modifier.tvContentEntry(
     route: String,
     centeredEmptyState: Boolean = false,
+    priority: Int = 0,
 ): Modifier {
     val bridge = LocalTvFocusBridge.current ?: return this
     val isTv = LocalIsTv.current
     if (!isTv) return this
+    val key = remember(route) { Any() }
     val requester = remember(route) { FocusRequester() }
-    DisposableEffect(bridge, route, requester, centeredEmptyState) {
-        bridge.registerEntry(route, requester, centeredEmptyState)
+    var attached by remember(route) { mutableStateOf(false) }
+    DisposableEffect(bridge, route, key, requester, centeredEmptyState, priority) {
+        bridge.registerEntry(
+            route = route,
+            requester = requester,
+            centeredEmptyState = centeredEmptyState,
+            priority = priority,
+            key = key,
+            isAttached = { attached },
+        )
         onDispose {
-            bridge.unregisterEntry(route, requester)
+            attached = false
+            bridge.unregisterEntry(route, requester, key)
         }
     }
-    return this.focusRequester(requester)
+    return this
+        .onGloballyPositioned { attached = it.isAttached }
+        .focusRequester(requester)
 }
 
 object TvHelper {

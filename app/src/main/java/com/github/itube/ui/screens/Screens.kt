@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -513,7 +514,7 @@ fun LibraryScreen(
                             color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp,
-                            modifier = Modifier.tvContentEntry("tab:Library").pressable(focusShape = CircleShape, onClick = onOpenHistory).padding(horizontal = 8.dp, vertical = 4.dp),
+                            modifier = Modifier.tvContentEntry("tab:Library", priority = 0).pressable(focusShape = CircleShape, onClick = onOpenHistory).padding(horizontal = 8.dp, vertical = 4.dp),
                         )
                     }
                 }
@@ -549,7 +550,8 @@ fun LibraryScreen(
                 ) {
                     PlaylistTile(
                         PlaylistRef("DL", "Downloads", null, "${DownloadLibrary.entries.size} videos"),
-                        if (isTv) Modifier.widthIn(max = 320.dp).fillMaxWidth() else Modifier.weight(1f),
+                        (if (isTv) Modifier.widthIn(max = 320.dp).fillMaxWidth() else Modifier.weight(1f))
+                            .tvContentEntry("tab:Library", priority = 1),
                         onOpenDownloads,
                     )
                     if (!isTv) Spacer(Modifier.weight(1f))
@@ -568,9 +570,14 @@ fun LibraryScreen(
                 PlaylistRef("LL", "Liked videos", null, null),
             )
             val plCols = if (isTv) tvGridColumns(screenWidth, 210.dp, 4) else 2
-            items((pinned + lib.playlists).chunked(plCols), key = { row -> row.joinToString { it.id } }) { row ->
+            itemsIndexed((pinned + lib.playlists).chunked(plCols), key = { _, row -> row.joinToString { it.id } }) { rowIdx, row ->
                 Row(Modifier.padding(horizontal = 16.dp, vertical = 5.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    row.forEach { pl -> PlaylistTile(pl, Modifier.weight(1f)) { onOpenPlaylist(pl) } }
+                    row.forEachIndexed { colIdx, pl ->
+                        PlaylistTile(
+                            pl,
+                            Modifier.weight(1f).then(if (rowIdx == 0 && colIdx < 2) Modifier.tvContentEntry("tab:Library", priority = 2 + colIdx) else Modifier),
+                        ) { onOpenPlaylist(pl) }
+                    }
                     repeat(plCols - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
@@ -898,7 +905,7 @@ fun PlaylistScreen(
             Modifier.fillMaxWidth().statusBarsPadding().padding(start = 12.dp, end = 16.dp, top = 12.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            CircleAction(Icons.AutoMirrored.Rounded.ArrowBack, "Back", Modifier.tvContentEntry("overlay:playlist"), onBack)
+            CircleAction(Icons.AutoMirrored.Rounded.ArrowBack, "Back", Modifier.tvContentEntry("overlay:playlist", priority = 5), onBack)
             Spacer(Modifier.width(12.dp))
             Text(
                 playlist.title,
@@ -929,6 +936,7 @@ fun PlaylistScreen(
                 item(key = "playlist-actions") {
                     PlaylistPlaybackActions(
                         count = shortsList.size,
+                        entryRoute = "overlay:playlist",
                         onPlay = { shortsList.firstOrNull()?.let(onOpenShort) },
                         onShuffle = { shortsList.shuffled().firstOrNull()?.let(onOpenShort) },
                     )
@@ -974,10 +982,12 @@ fun PlaylistScreen(
                         onOpen(video)
                     }
                 },
+                entryRoute = "overlay:playlist",
                 header = {
                     item(key = "playlist-actions") {
                         PlaylistPlaybackActions(
                             count = displayVideos.size,
+                            entryRoute = "overlay:playlist",
                             onPlay = {
                                 scope.launch {
                                     val all = if (likedShorts.isNotEmpty()) feed.loadAllVideos().filterNot { it.isShortVideo } else feed.loadAllVideos()
@@ -1330,9 +1340,19 @@ private fun RecommendedVideoRow(
 }
 
 @Composable
-private fun PlaylistPlaybackActions(count: Int, onPlay: () -> Unit, onShuffle: () -> Unit) {
+private fun PlaylistPlaybackActions(
+    count: Int,
+    entryRoute: String? = null,
+    onPlay: () -> Unit,
+    onShuffle: () -> Unit,
+) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        PlaylistActionButton("Play all", Icons.Rounded.PlayArrow, Modifier.weight(1f), onPlay)
+        PlaylistActionButton(
+            "Play all",
+            Icons.Rounded.PlayArrow,
+            Modifier.weight(1f).then(if (entryRoute != null) Modifier.tvContentEntry(entryRoute, priority = 0) else Modifier),
+            onPlay,
+        )
         PlaylistActionButton("Shuffle", Icons.Rounded.Shuffle, Modifier.weight(1f), onShuffle)
         if (count > 0) Text("$count", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 4.dp, vertical = 14.dp), fontSize = 13.sp)
     }
@@ -1484,7 +1504,11 @@ fun SearchScreen(
     // while the key event is still being dispatched can be undone by the IME, so the
     // window-level hide is posted to run after it.
     fun submit() {
-        focus.clearFocus(force = true)
+        if (!isTv) {
+            focus.clearFocus(force = true)
+        } else {
+            focus.moveFocus(FocusDirection.Down)
+        }
         keyboard?.hide()
         view.postDelayed({
             view.context.getSystemService(InputMethodManager::class.java)
@@ -1555,7 +1579,7 @@ fun SearchScreen(
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = { submit() }, onDone = { submit() }),
                     // Hardware Enter doesn't go through the IME action; treat it the same.
-                    modifier = Modifier.tvContentEntry("tab:Search").fillMaxWidth().onFocusChanged { focused = it.isFocused }.onPreviewKeyEvent { e ->
+                    modifier = Modifier.tvContentEntry("tab:Search", priority = 8).fillMaxWidth().onFocusChanged { focused = it.isFocused }.onPreviewKeyEvent { e ->
                         if (e.key == Key.Enter || e.key == Key.NumPadEnter) {
                             if (e.type == KeyEventType.KeyDown) submit()
                             true
@@ -1601,7 +1625,13 @@ fun SearchScreen(
                         icon = Icons.Rounded.CloudOff,
                         title = "Search didn't load",
                         body = state.error.orEmpty(),
-                        action = { PillButton("Try again", { state.submit() }) },
+                        action = {
+                            PillButton(
+                                "Try again",
+                                { state.submit() },
+                                modifier = Modifier.tvContentEntry("tab:Search", centeredEmptyState = true, priority = 0),
+                            )
+                        },
                     )
                     state.submitted.isEmpty() -> EmptyState(
                         icon = Icons.Rounded.TravelExplore,
@@ -1634,15 +1664,15 @@ fun SearchScreen(
                                 }
                             }
                             LazyColumn(state = list, contentPadding = contentPadding.withTop(top)) {
-                                items(
+                                itemsIndexed(
                                     items = rows,
-                                    key = { row ->
+                                    key = { _, row ->
                                         when (val first = row.first()) {
                                             is SearchDisplayItem.Normal -> "tv-row-${first.result.id}"
                                             is SearchDisplayItem.ShortsShelf -> first.key
                                         }
                                     }
-                                ) { row ->
+                                ) { rowIdx, row ->
                                     val first = row.first()
                                     if (first is SearchDisplayItem.ShortsShelf) {
                                         SearchShortsShelf(first.shorts, onOpenShort)
@@ -1651,10 +1681,17 @@ fun SearchScreen(
                                             Modifier.fillMaxWidth().padding(horizontal = 4.dp),
                                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                                         ) {
-                                            row.forEach { cell ->
+                                            row.forEachIndexed { colIdx, cell ->
                                                 if (cell is SearchDisplayItem.Normal) {
+                                                    val flatIdx = rowIdx * 2 + colIdx
                                                     Box(Modifier.weight(1f)) {
-                                                        SearchResultCard(cell.result, onOpen, onOpenShort, onOpenResult)
+                                                        SearchResultCard(
+                                                            cell.result,
+                                                            onOpen,
+                                                            onOpenShort,
+                                                            onOpenResult,
+                                                            modifier = if (flatIdx < 6) Modifier.tvContentEntry("tab:Search", priority = flatIdx) else Modifier,
+                                                        )
                                                     }
                                                 }
                                             }
@@ -1736,13 +1773,14 @@ private fun SearchResultCard(
     result: SearchResult,
     onOpen: (VideoItem) -> Unit,
     onOpenShort: (VideoItem) -> Unit,
-    onOpenResult: (SearchResult) -> Unit
+    onOpenResult: (SearchResult) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     result.video?.let { video ->
         if (video.isShortVideo) {
             SearchShortsShelf(shorts = listOf(video), onOpenShort = onOpenShort)
         } else {
-            VideoCard(video = video, onClick = { onOpen(video) })
+            VideoCard(video = video, onClick = { onOpen(video) }, modifier = modifier)
         }
         return
     }
@@ -1751,7 +1789,7 @@ private fun SearchResultCard(
     when (result.kind) {
         SearchResultKind.Channel -> {
             Row(
-                modifier = Modifier
+                modifier = modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 6.dp)
                     .pressable(focusScale = 1.02f, focusShape = cardShape) { onOpenResult(result) }
@@ -1804,7 +1842,7 @@ private fun SearchResultCard(
         }
         SearchResultKind.Collection -> {
             Row(
-                modifier = Modifier
+                modifier = modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 6.dp)
                     .pressable(focusScale = 1.02f, focusShape = cardShape) { onOpenResult(result) }
@@ -1866,7 +1904,7 @@ private fun SearchResultCard(
         }
         else -> {
             Row(
-                Modifier
+                modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 6.dp)
                     .pressable(focusScale = 1.02f, focusShape = cardShape) { onOpenResult(result) }

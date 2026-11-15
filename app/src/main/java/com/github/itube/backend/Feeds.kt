@@ -1,6 +1,5 @@
 package com.github.itube
 
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -10,9 +9,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CloudOff
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -294,7 +295,6 @@ fun FeedList(
     val c = MaterialTheme.colorScheme
     val list = rememberScrollToTop(scrollToTop)
     val displayVideos = videosOverride ?: feed.videos
-    val firstVideoId = displayVideos.firstOrNull()?.id
     // Fresh content always starts at the top on refresh without jolting focus on initial load.
     LaunchedEffect(feed.generation) {
         if (feed.generation > 0 && list.firstVisibleItemIndex > 0) {
@@ -321,19 +321,21 @@ fun FeedList(
                 val limit = videoBatchSizes[batch % videoBatchSizes.size].coerceAtLeast(1)
                 val end = (offset + limit).coerceAtMost(displayVideos.size)
                 val group = displayVideos.subList(offset, end)
+                val groupBase = offset
                 if (gridCols > 1) {
                     val rows = group.chunked(gridCols)
-                    items(rows, key = { it.first().id }) { row ->
+                    itemsIndexed(rows, key = { _, row -> row.first().id }) { rowIndex, row ->
                         androidx.compose.foundation.layout.Row(
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
                             horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
                         ) {
-                            for (video in row) {
+                            row.forEachIndexed { colIndex, video ->
+                                val flatIndex = groupBase + rowIndex * gridCols + colIndex
                                 Box(Modifier.weight(1f)) {
                                     VideoCard(
                                         video,
                                         onClick = { onOpen(video) },
-                                        modifier = if (entryRoute != null && video.id == firstVideoId) Modifier.tvContentEntry(entryRoute) else Modifier,
+                                        modifier = if (entryRoute != null && flatIndex < 6) Modifier.tvContentEntry(entryRoute, priority = flatIndex) else Modifier,
                                     )
                                 }
                             }
@@ -343,11 +345,12 @@ fun FeedList(
                         }
                     }
                 } else {
-                    items(group, key = { it.id }) { video ->
+                    itemsIndexed(group, key = { _, video -> video.id }) { index, video ->
+                        val flatIndex = groupBase + index
                         VideoCard(
                             video,
                             onClick = { onOpen(video) },
-                            modifier = if (entryRoute != null && video.id == firstVideoId) Modifier.tvContentEntry(entryRoute) else Modifier,
+                            modifier = if (entryRoute != null && flatIndex < 6) Modifier.tvContentEntry(entryRoute, priority = flatIndex) else Modifier,
                         )
                     }
                 }
@@ -359,17 +362,18 @@ fun FeedList(
         } else if (afterFirstVideo == null) {
             if (gridCols > 1) {
                 val rows = displayVideos.chunked(gridCols)
-                items(rows, key = { it.first().id }) { row ->
+                itemsIndexed(rows, key = { _, row -> row.first().id }) { rowIndex, row ->
                     androidx.compose.foundation.layout.Row(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
                         horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
                     ) {
-                        for (video in row) {
+                        row.forEachIndexed { colIndex, video ->
+                            val flatIndex = rowIndex * gridCols + colIndex
                             Box(Modifier.weight(1f)) {
                                 VideoCard(
                                     video,
                                     onClick = { onOpen(video) },
-                                    modifier = if (entryRoute != null && video.id == firstVideoId) Modifier.tvContentEntry(entryRoute) else Modifier,
+                                    modifier = if (entryRoute != null && flatIndex < 6) Modifier.tvContentEntry(entryRoute, priority = flatIndex) else Modifier,
                                 )
                             }
                         }
@@ -379,11 +383,11 @@ fun FeedList(
                     }
                 }
             } else {
-                items(displayVideos, key = { it.id }) { video ->
+                itemsIndexed(displayVideos, key = { _, video -> video.id }) { index, video ->
                     VideoCard(
                         video,
                         onClick = { onOpen(video) },
-                        modifier = if (entryRoute != null && video.id == firstVideoId) Modifier.tvContentEntry(entryRoute) else Modifier,
+                        modifier = if (entryRoute != null && index < 6) Modifier.tvContentEntry(entryRoute, priority = index) else Modifier,
                     )
                 }
             }
@@ -393,21 +397,26 @@ fun FeedList(
                     VideoCard(
                         first,
                         onClick = { onOpen(first) },
-                        modifier = if (entryRoute != null) Modifier.tvContentEntry(entryRoute) else Modifier,
+                        modifier = if (entryRoute != null) Modifier.tvContentEntry(entryRoute, priority = 0) else Modifier,
                     )
                 }
             }
             afterFirstVideo()
             if (gridCols > 1) {
                 val rows = displayVideos.drop(1).chunked(gridCols)
-                items(rows, key = { it.first().id }) { row ->
+                itemsIndexed(rows, key = { _, row -> row.first().id }) { rowIndex, row ->
                     androidx.compose.foundation.layout.Row(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
                         horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
                     ) {
-                        for (video in row) {
+                        row.forEachIndexed { colIndex, video ->
+                            val flatIndex = 1 + rowIndex * gridCols + colIndex
                             Box(Modifier.weight(1f)) {
-                                VideoCard(video, onClick = { onOpen(video) })
+                                VideoCard(
+                                    video,
+                                    onClick = { onOpen(video) },
+                                    modifier = if (entryRoute != null && flatIndex < 6) Modifier.tvContentEntry(entryRoute, priority = flatIndex) else Modifier,
+                                )
                             }
                         }
                         repeat(gridCols - row.size) {
@@ -416,7 +425,14 @@ fun FeedList(
                     }
                 }
             } else {
-                items(displayVideos.drop(1), key = { it.id }) { video -> VideoCard(video, onClick = { onOpen(video) }) }
+                itemsIndexed(displayVideos.drop(1), key = { _, video -> video.id }) { index, video ->
+                    val flatIndex = index + 1
+                    VideoCard(
+                        video,
+                        onClick = { onOpen(video) },
+                        modifier = if (entryRoute != null && flatIndex < 6) Modifier.tvContentEntry(entryRoute, priority = flatIndex) else Modifier,
+                    )
+                }
             }
         }
         footer?.invoke(this)
@@ -432,21 +448,28 @@ fun FeedList(
                         PillButton(
                             "Try again",
                             { feed.refresh() },
-                            modifier = if (entryRoute != null) Modifier.tvContentEntry(entryRoute, centeredEmptyState = true) else Modifier,
+                            modifier = if (entryRoute != null) Modifier.tvContentEntry(entryRoute, centeredEmptyState = true, priority = 20) else Modifier,
                         )
                     },
                 )
             }
             feed.loading && feed.videos.isEmpty() -> item {
-                Box(
-                    modifier = if (isTv && entryRoute != null) {
-                        Modifier.tvContentEntry(entryRoute, centeredEmptyState = true).focusable()
-                    } else {
-                        Modifier
+                HomeScreenSkeleton()
+            }
+            !feed.loading && !feed.hasMore && displayVideos.isEmpty() && feed.error == null -> item {
+                EmptyState(
+                    icon = Icons.Rounded.Refresh,
+                    title = "No matching videos yet",
+                    body = "Try refreshing to fetch the latest videos.",
+                    action = {
+                        PillButton(
+                            "Refresh",
+                            { feed.refresh() },
+                            icon = Icons.Rounded.Refresh,
+                            modifier = if (entryRoute != null) Modifier.tvContentEntry(entryRoute, centeredEmptyState = true, priority = 20) else Modifier,
+                        )
                     },
-                ) {
-                    HomeScreenSkeleton()
-                }
+                )
             }
             feed.loading || feed.hasMore -> item {
                 Box(Modifier.fillMaxWidth().padding(28.dp), Alignment.Center) {

@@ -30,6 +30,7 @@ class AirStreamApplication : Application(), ImageLoaderFactory {
         ResumeStore.init(this)
         SavedSession.init(this)
         Account.init(this)
+        ChannelOriginResolver.init(this)
         Bells.init(this)
         NewVideos.schedule(this)
         SponsorBlock.init(this)

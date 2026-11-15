@@ -263,7 +263,12 @@ object YouTube {
     /** Applies the actual YouTube/NewPipe content filter selected in the search sheet. */
     suspend fun search(query: String, filter: SearchFilter): List<SearchResult> = withContext(Dispatchers.IO) {
         val handler = service.searchQHFactory.fromQuery(query, listOf(filter.contentFilter), "")
-        SearchInfo.getInfo(service, handler).relatedItems.mapNotNull { it.toSearchResult(filter) }
+        val results = SearchInfo.getInfo(service, handler).relatedItems.mapNotNull { it.toSearchResult(filter) }
+        if (filter == SearchFilter.News) {
+            ChannelOriginResolver.filterIndiaOriginSearchResults(results)
+        } else {
+            results
+        }
     }
 
     /** Lightweight YouTube completion endpoint used while the user is still typing. */
@@ -325,6 +330,8 @@ object YouTube {
     suspend fun details(id: String, wait: Boolean = true): VideoDetails = withContext(Dispatchers.IO) {
         val info = if (wait) BotCheck.retrying(id) { StreamCache.getOrLoad(id) } else BotCheck.withoutWaiting(id) { StreamCache.getOrLoad(id) }
         val picked = StreamSelection.pick(info)
+        val rawRelated = info.relatedItems.filterIsInstance<StreamInfoItem>().mapNotNull { it.toVideoItem() }
+        val filteredRelated = ChannelOriginResolver.filterIndiaOriginVideos(rawRelated, maxResolve = 18)
         VideoDetails(
             item = VideoItem(
                 id = id,
@@ -343,7 +350,7 @@ object YouTube {
             }.orEmpty(),
             likes = info.likeCount,
             subscribers = info.uploaderSubscriberCount,
-            related = info.relatedItems.filterIsInstance<StreamInfoItem>().mapNotNull { it.toVideoItem() },
+            related = filteredRelated,
             playable = picked.isPlayable,
             quality = picked.playedHeight?.let { "${it}p" },
             qualities = StreamSelection.heights(info),

@@ -108,6 +108,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -351,12 +352,16 @@ fun AirStreamApp() {
         onDispose { rootView.keepScreenOn = false }
     }
 
-    // Opening the player drops any text focus (the search box behind it), so the keyboard
-    // can't come back over the video.
+    val isTv = com.github.itube.ui.tv.rememberIsTv()
+    // Opening the player drops any text focus (the search box behind it) on touch screens,
+    // while TV keeps focus inside the active player hierarchy.
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
-    LaunchedEffect(player.expanded) {
-        if (player.expanded) { focusManager.clearFocus(force = true); keyboard?.hide() }
+    LaunchedEffect(player.expanded, isTv) {
+        if (player.expanded) {
+            if (!isTv) focusManager.clearFocus(force = true)
+            keyboard?.hide()
+        }
     }
 
     // Off screen (app in background, screen locked): audio only.
@@ -384,7 +389,6 @@ fun AirStreamApp() {
     val playerOpen = player.current != null && player.expanded
     // On Shorts the app's video waits, paused, out of sight (no mini-player).
     val hasMini = player.current != null && tab != Tab.Shorts
-    val isTv = com.github.itube.ui.tv.rememberIsTv()
     // Lists scroll fully clear of the floating nav (and mini-player when present).
     val contentPadding = if (isTv) {
         PaddingValues(
@@ -607,6 +611,7 @@ fun AirStreamApp() {
             CrashReports.pendingReport == null &&
             !(automaticUpdateNotes && availableUpdate != null)
 
+        var mainWindowHasFocus by remember { mutableStateOf(false) }
         var previousTvRoute by remember { mutableStateOf<String?>(null) }
         var wasBackgroundInteractive by remember { mutableStateOf(backgroundInteractive) }
         LaunchedEffect(isTv, activeTvRoute, backgroundInteractive) {
@@ -620,6 +625,15 @@ fun AirStreamApp() {
             val recoveredFromModal = !prevInteractive
             if (routeTransition || recoveredFromModal) {
                 kotlinx.coroutines.delay(55)
+                tvFocusBridge.focusContentOrHeaderOrRail()
+            }
+        }
+        LaunchedEffect(isTv, mainWindowHasFocus, backgroundInteractive, activeTvRoute, playerOpen, showFullscreen) {
+            if (!isTv || !backgroundInteractive || playerOpen || showFullscreen || mainWindowHasFocus) {
+                return@LaunchedEffect
+            }
+            kotlinx.coroutines.delay(70)
+            if (!mainWindowHasFocus && backgroundInteractive && !playerOpen && !showFullscreen) {
                 tvFocusBridge.focusContentOrHeaderOrRail()
             }
         }
@@ -644,6 +658,7 @@ fun AirStreamApp() {
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .onFocusChanged { mainWindowHasFocus = it.hasFocus }
                 .then(if (popupBlurRadius > 0.dp) Modifier.blur(popupBlurRadius) else Modifier),
         ) {
         Box(
@@ -1096,6 +1111,9 @@ fun AirStreamApp() {
                     .graphicsLayer {
                         translationY = shortsAside * (NavHeight + stackBottom + 24.dp).toPx()
                         alpha = 1f - shortsAside
+                    }
+                    .focusProperties {
+                        canFocus = backgroundInteractive && !playerOpen && !showFullscreen && !shorts.commentsOpen && openChannel == null
                     },
             )
         }

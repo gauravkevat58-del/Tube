@@ -219,7 +219,7 @@ object InnerTube {
                     .put("clientName", "WEB")
                     .put("clientVersion", Account.clientVersion())
                     .put("hl", "en")
-                    .put("gl", "US")
+                    .put("gl", "IN")
                     .apply { Account.visitorData()?.let { put("visitorData", it) } },
             ),
         )
@@ -255,10 +255,29 @@ object InnerTube {
     }
 
     suspend fun home(next: String? = null): FeedPage = withContext(Dispatchers.IO) {
-        val body = if (next != null) JSONObject().put("continuation", next)
-        else JSONObject().put("browseId", "FEwhat_to_watch")
-        val root = postAny("browse", body)
-        parseFeed(root).copy(collections = if (next == null) parseHomeCollections(root) else emptyList())
+        var token = next
+        val filtered = LinkedHashMap<String, VideoItem>()
+        var collections = emptyList<PublicCollection>()
+        var attempts = 0
+        do {
+            val body = if (token != null) JSONObject().put("continuation", token)
+            else JSONObject().put("browseId", "FEwhat_to_watch")
+            val root = postAny("browse", body)
+            val parsed = parseFeed(root)
+            if (attempts == 0 && next == null) {
+                collections = parseHomeCollections(root)
+            }
+            ChannelOriginResolver.filterIndiaOriginVideos(parsed.videos).forEach {
+                filtered.putIfAbsent(it.id, it)
+            }
+            token = parsed.next
+            attempts++
+        } while (filtered.isEmpty() && token != null && attempts < 3)
+        FeedPage(
+            videos = filtered.values.toList(),
+            next = token,
+            collections = collections,
+        )
     }
 
     /** Real playlist and auto-Mix shelves from the signed-in Home response. */
@@ -506,7 +525,8 @@ object InnerTube {
         val distinctVideos = videos.distinctBy { it.id }
         val directIds = pages.flatMap { page -> parsePlaylistFeed(page).videos }.mapTo(HashSet()) { it.id }
         val playlistVideos = if (directIds.isEmpty()) distinctVideos else distinctVideos.filter { it.id in directIds }
-        val recommendations = if (directIds.isEmpty()) emptyList() else distinctVideos.filter { it.id !in directIds }
+        val rawRecommendations = if (directIds.isEmpty()) emptyList() else distinctVideos.filter { it.id !in directIds }
+        val recommendations = ChannelOriginResolver.filterIndiaOriginVideos(rawRecommendations)
         if (thumb == null) thumb = playlistVideos.firstOrNull()?.thumbnail
 
         val finalSub = listOfNotNull(
@@ -536,7 +556,9 @@ object InnerTube {
         val browseId = if (id.startsWith("VL")) id else "VL$id"
         val body = if (next == null) JSONObject().put("browseId", browseId) else JSONObject().put("continuation", next)
         val root = postAny("browse", body)
-        parsePlaylistFeed(root)
+        val page = parsePlaylistFeed(root)
+        if (page.recommendations.isEmpty()) page
+        else page.copy(recommendations = ChannelOriginResolver.filterIndiaOriginVideos(page.recommendations))
     }
 
     suspend fun channels(): List<ChannelRef> = withContext(Dispatchers.IO) {
@@ -1167,11 +1189,22 @@ object InnerTube {
         val durSec = parseDuration(duration)
         val isShort = o.optString("contentType") == "LOCKUP_CONTENT_TYPE_SHORTS" ||
             o.collectStrings("url").any { it.contains("/shorts/") }
+        val ucChannelUrl = o.collectStrings("browseId")
+            .firstOrNull { it.startsWith("UC") }
+            ?.let { "https://www.youtube.com/channel/$it" }
+        val handleChannelUrl = if (ucChannelUrl == null) {
+            o.collectStrings("url")
+                .firstOrNull { it.contains("/@") }
+                ?.let { raw ->
+                    val handle = raw.substringAfter("/@").substringBefore('/').substringBefore('?')
+                    if (handle.isNotBlank()) "https://www.youtube.com/@$handle" else null
+                }
+        } else null
         return VideoItem(
             id = id,
             title = title,
             channel = parts.firstOrNull { !it.contains("view") && !it.contains("ago") }.orEmpty(),
-            channelUrl = o.collectStrings("browseId").firstOrNull { it.startsWith("UC") }?.let { "https://www.youtube.com/channel/$it" },
+            channelUrl = ucChannelUrl ?: handleChannelUrl,
             thumbnail = if (isShort) "https://i.ytimg.com/vi/$id/oar2.jpg" else (o.thumbnails()?.lastOrNull() ?: "https://i.ytimg.com/vi/$id/hqdefault.jpg"),
             avatar = avatar?.let(::absoluteUrl),
             durationSec = durSec,

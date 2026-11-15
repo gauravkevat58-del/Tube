@@ -94,7 +94,7 @@ fun TvNavRail(
             .focusProperties {
                 exit = { direction ->
                     if (direction == FocusDirection.Right) {
-                        bridge?.currentEntryRequester() ?: bridge?.currentHeaderRequester() ?: FocusRequester.Default
+                        bridge?.exitToContentRequester() ?: FocusRequester.Default
                     } else {
                         FocusRequester.Default
                     }

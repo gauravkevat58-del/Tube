@@ -22,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -105,6 +106,13 @@ fun CollapsingHeaderLayout(
             Modifier
                 .fillMaxWidth()
                 .onSizeChanged { headerPx = it.height }
+                .onFocusChanged { state ->
+                    if (state.hasFocus && offset.value < 0f) {
+                        scope.launch {
+                            if (reduced) offset.snapTo(0f) else offset.animateTo(0f, settleSpec)
+                        }
+                    }
+                }
                 .graphicsLayer {
                     translationY = offset.value
                     // Eases out as it leaves, so the edge never reads as a hard sliding slab.

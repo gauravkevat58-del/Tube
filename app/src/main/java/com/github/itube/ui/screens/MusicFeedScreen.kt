@@ -2,7 +2,6 @@ package com.github.itube
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,7 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -145,9 +144,6 @@ fun MusicFeedScreen(
             }
         }
 
-        val firstVideoId = musicVideos.firstOrNull()?.id
-        val firstCollectionUrl = if (firstVideoId == null) musicCollections.firstOrNull()?.url else null
-
         PullToRefresh(
             enabled = true,
             refreshing = lib.home.refreshing,
@@ -159,7 +155,7 @@ fun MusicFeedScreen(
                     item(key = "musicCollections") {
                         MusicCollectionsShelf(
                             collections = musicCollections,
-                            entryCollectionUrl = firstCollectionUrl,
+                            entryPriorityOffset = if (musicVideos.isEmpty()) 0 else 6,
                             onPlay = onPlayCollection,
                         )
                     }
@@ -171,17 +167,18 @@ fun MusicFeedScreen(
                     }
                     if (gridCols > 1) {
                         val rows = musicVideos.chunked(gridCols)
-                        items(rows, key = { "music-row-${it.first().id}" }) { row ->
+                        itemsIndexed(rows, key = { _, row -> "music-row-${row.first().id}" }) { rowIndex, row ->
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                for (video in row) {
+                                row.forEachIndexed { colIndex, video ->
+                                    val flatIndex = rowIndex * gridCols + colIndex
                                     Box(Modifier.weight(1f)) {
                                         VideoCard(
                                             video = video,
                                             onClick = { onOpen(video) },
-                                            modifier = if (video.id == firstVideoId) Modifier.tvContentEntry("tab:Music") else Modifier,
+                                            modifier = if (flatIndex < 6) Modifier.tvContentEntry("tab:Music", priority = flatIndex) else Modifier,
                                         )
                                     }
                                 }
@@ -191,11 +188,11 @@ fun MusicFeedScreen(
                             }
                         }
                     } else {
-                        items(musicVideos, key = { "music-video-${it.id}" }) { video ->
+                        itemsIndexed(musicVideos, key = { _, video -> "music-video-${video.id}" }) { index, video ->
                             VideoCard(
                                 video = video,
                                 onClick = { onOpen(video) },
-                                modifier = if (video.id == firstVideoId) Modifier.tvContentEntry("tab:Music") else Modifier,
+                                modifier = if (index < 6) Modifier.tvContentEntry("tab:Music", priority = index) else Modifier,
                             )
                         }
                     }
@@ -211,21 +208,13 @@ fun MusicFeedScreen(
                                 PillButton(
                                     "Try again",
                                     { lib.home.refresh() },
-                                    modifier = Modifier.tvContentEntry("tab:Music", centeredEmptyState = true),
+                                    modifier = Modifier.tvContentEntry("tab:Music", centeredEmptyState = true, priority = 20),
                                 )
                             },
                         )
                     }
                     lib.home.loading && musicVideos.isEmpty() && musicCollections.isEmpty() -> item {
-                        Box(
-                            modifier = if (isTv) {
-                                Modifier.tvContentEntry("tab:Music", centeredEmptyState = true).focusable()
-                            } else {
-                                Modifier
-                            },
-                        ) {
-                            HomeScreenSkeleton()
-                        }
+                        HomeScreenSkeleton()
                     }
                     musicVideos.isEmpty() && musicCollections.isEmpty() -> item {
                         EmptyState(
@@ -262,7 +251,7 @@ fun MusicFeedScreen(
 @Composable
 private fun MusicCollectionsShelf(
     collections: List<PublicCollection>,
-    entryCollectionUrl: String?,
+    entryPriorityOffset: Int,
     onPlay: (PublicCollection) -> Unit,
 ) {
     val c = MaterialTheme.colorScheme
@@ -272,13 +261,13 @@ private fun MusicCollectionsShelf(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            items(collections, key = { "music-collection-${it.url}" }) { collection ->
+            itemsIndexed(collections, key = { _, collection -> "music-collection-${collection.url}" }) { idx, collection ->
                 val isMix = collection.subtitle.contains("mix", ignoreCase = true) ||
                     collection.url.substringAfter("list=", "").startsWith("RD")
                 val cardShape = RoundedCornerShape(18.dp)
                 Column(
                     Modifier
-                        .then(if (collection.url == entryCollectionUrl) Modifier.tvContentEntry("tab:Music") else Modifier)
+                        .then(if (idx < 3) Modifier.tvContentEntry("tab:Music", priority = entryPriorityOffset + idx) else Modifier)
                         .width(204.dp)
                         .pressable(pressedScale = 0.98f, focusScale = 1.03f, focusShape = cardShape) { onPlay(collection) },
                 ) {

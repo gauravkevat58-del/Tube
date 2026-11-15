@@ -37,6 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
+import com.github.itube.ui.tv.tvFocusRing
 import java.io.File
 import java.io.PrintWriter
 import java.io.StringWriter
@@ -177,23 +178,32 @@ fun CrashReportDialog(report: String, onDismiss: () -> Unit) {
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End,
                 ) {
-                    TextButton(onClick = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        clipboard.setPrimaryClip(ClipData.newPlainText("iTube crash logs", report))
-                        Toast.makeText(context, "Crash logs copied", Toast.LENGTH_SHORT).show()
-                    }) { Text("Copy all logs") }
+                    TextButton(
+                        onClick = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(ClipData.newPlainText("iTube crash logs", report))
+                            Toast.makeText(context, "Crash logs copied", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.tvFocusRing(RoundedCornerShape(20.dp)),
+                    ) { Text("Copy all logs") }
                     Spacer(Modifier.width(4.dp))
-                    Button(onClick = {
-                        val share = Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_SUBJECT, "iTube crash logs")
-                            putExtra(Intent.EXTRA_TEXT, report)
-                        }
-                        runCatching { context.startActivity(Intent.createChooser(share, "Share crash logs")) }
-                            .onFailure { Toast.makeText(context, "Couldn't open the share menu", Toast.LENGTH_SHORT).show() }
-                    }) { Text("Share") }
+                    Button(
+                        onClick = {
+                            val share = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_SUBJECT, "iTube crash logs")
+                                putExtra(Intent.EXTRA_TEXT, report)
+                            }
+                            runCatching { context.startActivity(Intent.createChooser(share, "Share crash logs")) }
+                                .onFailure { Toast.makeText(context, "Couldn't open the share menu", Toast.LENGTH_SHORT).show() }
+                        },
+                        modifier = Modifier.tvFocusRing(RoundedCornerShape(20.dp)),
+                    ) { Text("Share") }
                 }
-                TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Dismiss") }
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth().tvFocusRing(RoundedCornerShape(20.dp)),
+                ) { Text("Dismiss") }
             }
         }
     }

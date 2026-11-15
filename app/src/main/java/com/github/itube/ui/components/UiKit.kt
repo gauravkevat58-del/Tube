@@ -68,6 +68,7 @@ import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.layout.onGloballyPositioned
 import com.github.itube.ui.tv.LocalIsTv
 import com.github.itube.ui.tv.LocalTvFocusBridge
 import androidx.compose.ui.unit.dp
@@ -118,11 +119,15 @@ fun ScreenHeader(
     val isTv = LocalIsTv.current
     val bridge = LocalTvFocusBridge.current
     val headerRequester = remember { FocusRequester() }
+    var headerAttached by remember { mutableStateOf(false) }
     val activeHeaderRoute = route ?: bridge?.activeRoute
     if (isTv && bridge != null && activeHeaderRoute != null) {
         DisposableEffect(bridge, activeHeaderRoute, headerRequester) {
-            bridge.registerHeader(activeHeaderRoute, headerRequester)
-            onDispose { bridge.unregisterHeader(activeHeaderRoute, headerRequester) }
+            bridge.registerHeader(activeHeaderRoute, headerRequester) { headerAttached }
+            onDispose {
+                headerAttached = false
+                bridge.unregisterHeader(activeHeaderRoute, headerRequester)
+            }
         }
     }
     Row(
@@ -159,6 +164,7 @@ fun ScreenHeader(
         )
         Row(
             modifier = Modifier
+                .onGloballyPositioned { headerAttached = it.isAttached }
                 .focusRequester(headerRequester)
                 .focusProperties {
                     exit = { direction ->

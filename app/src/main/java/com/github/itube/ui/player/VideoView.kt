@@ -323,8 +323,9 @@ fun VideoContent(
             .background(Color.Black)
             .onGloballyPositioned { pip?.videoBounds = it.boundsInWindow() }
             .then(
-                if (isTv && !fullscreen && !controlsVisible && stageFocused) {
-                    Modifier.border(2.5.dp, MaterialTheme.colorScheme.primary)
+                if (isTv && !controlsVisible && stageFocused) {
+                    val alpha = if (!fullscreen || !state.isPlaying) 0.92f else 0.42f
+                    Modifier.border(2.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = alpha))
                 } else Modifier
             )
             .onFocusChanged { stageFocused = it.isFocused }

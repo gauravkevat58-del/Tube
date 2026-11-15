@@ -27,6 +27,11 @@ import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import android.os.Build
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -40,6 +45,7 @@ import com.github.itube.ui.tv.tvContentEntry
 import com.github.itube.ui.tv.tvFocusRing
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -2350,6 +2356,42 @@ private fun bottomCornerRadius(view: android.view.View): Int {
     )
 }
 
+data class ShortsViewportSpec(
+    val stageWidthPx: Int,
+    val stageHeightPx: Int,
+    val isPillarboxed: Boolean,
+    val effectiveAspect: Float,
+)
+
+fun computeShortsViewportSpec(
+    containerWidthPx: Int,
+    containerHeightPx: Int,
+    rawVideoAspect: Float,
+): ShortsViewportSpec {
+    if (containerWidthPx <= 0 || containerHeightPx <= 0) {
+        return ShortsViewportSpec(0, 0, false, 9f / 16f)
+    }
+    val normalizedAspect = when {
+        !rawVideoAspect.isFinite() || rawVideoAspect <= 0.1f -> 9f / 16f
+        rawVideoAspect <= 1f -> rawVideoAspect.coerceIn(0.45f, 0.9f)
+        else -> rawVideoAspect.coerceAtMost(2.4f)
+    }
+    val containerAspect = containerWidthPx.toFloat() / containerHeightPx.toFloat()
+    val byHeight = containerAspect > normalizedAspect
+    val w = (if (byHeight) containerHeightPx * normalizedAspect else containerWidthPx.toFloat())
+        .roundToInt()
+        .coerceIn(1, containerWidthPx)
+    val h = (if (byHeight) containerHeightPx.toFloat() else containerWidthPx / normalizedAspect)
+        .roundToInt()
+        .coerceIn(1, containerHeightPx)
+    return ShortsViewportSpec(
+        stageWidthPx = w,
+        stageHeightPx = h,
+        isPillarboxed = w < containerWidthPx - 2,
+        effectiveAspect = normalizedAspect,
+    )
+}
+
 @Composable
 private fun ShortsPager(
     shorts: ShortsState,
@@ -2363,9 +2405,7 @@ private fun ShortsPager(
     val isTv = LocalIsTv.current
     val bridge = LocalTvFocusBridge.current
     val pagerFocus = remember { FocusRequester() }
-    LaunchedEffect(isTv) {
-        if (isTv) runCatching { pagerFocus.requestFocus() }
-    }
+    var pagerFocused by remember { mutableStateOf(false) }
     LaunchedEffect(pager) { snapshotFlow { pager.settledPage }.collect { shorts.select(it) } }
     LaunchedEffect(pager) {
         var previous = pager.currentPage + pager.currentPageOffsetFraction
@@ -2379,8 +2419,9 @@ private fun ShortsPager(
         state = pager,
         modifier = Modifier
             .fillMaxSize()
-            .tvContentEntry("tab:Shorts")
+            .tvContentEntry("tab:Shorts", priority = 0)
             .focusRequester(pagerFocus)
+            .onFocusChanged { pagerFocused = it.isFocused || it.hasFocus }
             .focusable()
             .onPreviewKeyEvent { ev ->
                 if (ev.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
@@ -2436,52 +2477,75 @@ private fun ShortsPager(
         // The pages either side are composed, so their views (and loaded first frames) are ready mid-swipe.
         beyondViewportPageCount = 1,
         key = { shorts.items.getOrNull(it)?.id ?: it },
-    ) { page -> ShortPage(shorts, page, overlayBottom) }
+    ) { page -> ShortPage(shorts, page, overlayBottom, stageFocused = pagerFocused && isTv && shorts.index == page) }
 }
 
 @Composable
-private fun ShortPage(shorts: ShortsState, page: Int, overlayBottom: Dp) {
+private fun ShortPage(shorts: ShortsState, page: Int, overlayBottom: Dp, stageFocused: Boolean) {
     val item = shorts.items.getOrNull(page) ?: return
     val details = shorts.details[item.id]
     val failure = shorts.failed[item.id]
     val aspect = shorts.aspects[item.id] ?: details?.aspect ?: (9f / 16f)
     val onScreen = shorts.index == page
     val view = LocalView.current
+    val density = LocalDensity.current
+    val primaryColor = MaterialTheme.colorScheme.primary
     DisposableEffect(page) { onDispose { shorts.forgetPage(page) } }
-    Box(
+    BoxWithConstraints(
         Modifier
             .fillMaxSize()
             .background(Color.Black)
             .pointerInputTap(page, shorts, view) { if (shorts.index == page) shorts.togglePause() },
     ) {
-        Box(Modifier.fillMaxSize().clipToBounds()) {
-            // Vertical shorts fill the screen (a little cropped at the sides); wider ones fit its width.
-            Box(
-                Modifier
+        val viewport = computeShortsViewportSpec(constraints.maxWidth, constraints.maxHeight, aspect)
+        val stageShape = if (viewport.isPillarboxed) RoundedCornerShape(18.dp) else RectangleShape
+        if (viewport.isPillarboxed) {
+            AsyncImage(
+                model = item.shortThumbnail,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
                     .fillMaxSize()
-                    .aspectFit(aspect, cover = aspect < 0.7f)
-                    .onGloballyPositioned { shorts.videoRects[page] = Rect(it.positionInRoot(), it.size.toSize()) },
-            ) {
-                AsyncImage(model = item.shortThumbnail, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                ShortVideo(shorts, page, Modifier.fillMaxSize())
-            }
+                    .graphicsLayer { scaleX = 1.15f; scaleY = 1.15f; alpha = 0.42f }
+                    .then(if (Build.VERSION.SDK_INT >= 31) Modifier.blur(44.dp) else Modifier),
+            )
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.62f)))
         }
-        // Shades for the status bar's icons and the text.
+        val stageWidthDp = with(density) { viewport.stageWidthPx.toDp() }
+        val stageHeightDp = with(density) { viewport.stageHeightPx.toDp() }
         Box(
-            Modifier.fillMaxWidth().height(110.dp)
-                .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.38f), Color.Black.copy(alpha = 0f)))),
-        )
-        Box(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(330.dp)
-                .background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0f), 0.35f to Color.Black.copy(alpha = 0.18f), 1f to Color.Black.copy(alpha = 0.62f))),
-        )
-        if (details != null) {
-            val shade = LocalTextStyle.current.copy(shadow = Shadow(Color.Black.copy(alpha = 0.3f), Offset(0f, 2f), 4f))
-            Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(start = 16.dp, end = 24.dp, bottom = overlayBottom)) {
-                Text(details.item.channel, color = Ink, fontWeight = FontWeight.SemiBold, fontSize = 14.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, style = shade)
-                if (details.item.title.isNotBlank()) {
-                    Spacer(Modifier.height(6.dp))
-                    Text(details.item.title, color = Ink, fontSize = 14.sp, lineHeight = 19.sp, maxLines = 3, overflow = TextOverflow.Ellipsis, style = shade)
+            Modifier
+                .align(Alignment.Center)
+                .size(stageWidthDp, stageHeightDp)
+                .clip(stageShape)
+                .background(Color.Black)
+                .then(if (stageFocused) Modifier.border(2.5.dp, primaryColor, stageShape) else Modifier)
+                .onGloballyPositioned { shorts.videoRects[page] = Rect(it.positionInRoot(), it.size.toSize()) },
+        ) {
+            AsyncImage(
+                model = item.shortThumbnail,
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize(),
+            )
+            ShortVideo(shorts, page, Modifier.fillMaxSize())
+            // Shades for the status bar's icons and the text.
+            Box(
+                Modifier.fillMaxWidth().height(110.dp)
+                    .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.38f), Color.Black.copy(alpha = 0f)))),
+            )
+            Box(
+                Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(330.dp)
+                    .background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0f), 0.35f to Color.Black.copy(alpha = 0.18f), 1f to Color.Black.copy(alpha = 0.62f))),
+            )
+            if (details != null) {
+                val shade = LocalTextStyle.current.copy(shadow = Shadow(Color.Black.copy(alpha = 0.3f), Offset(0f, 2f), 4f))
+                Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(start = 16.dp, end = 24.dp, bottom = overlayBottom)) {
+                    Text(details.item.channel, color = Ink, fontWeight = FontWeight.SemiBold, fontSize = 14.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, style = shade)
+                    if (details.item.title.isNotBlank()) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(details.item.title, color = Ink, fontSize = 14.sp, lineHeight = 19.sp, maxLines = 3, overflow = TextOverflow.Ellipsis, style = shade)
+                    }
                 }
             }
         }
@@ -2560,6 +2624,8 @@ private fun ShortVideo(shorts: ShortsState, page: Int, modifier: Modifier) {
     AndroidView(
         factory = { context ->
             TextureView(context).apply {
+                isFocusable = false
+                isFocusableInTouchMode = false
                 surfaceTextureListener = object : TextureView.SurfaceTextureListener {
                     override fun onSurfaceTextureAvailable(st: SurfaceTexture, width: Int, height: Int) { surface = Surface(st) }
                     override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, width: Int, height: Int) {}

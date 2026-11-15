@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
+import com.github.itube.ui.tv.LocalIsTv
 import com.github.itube.ui.tv.tvFocusRing
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.draw.shadow
@@ -562,10 +563,15 @@ private fun Composer(state: CommentsState) {
     val c = MaterialTheme.colorScheme
     val keyboard = LocalSoftwareKeyboardController.current
     val focus = LocalFocusManager.current
+    val isTv = LocalIsTv.current
     val view = LocalView.current
     val requester = remember { FocusRequester() }
     fun send() {
-        focus.clearFocus(force = true)
+        if (!isTv) {
+            focus.clearFocus(force = true)
+        } else {
+            focus.moveFocus(FocusDirection.Up)
+        }
         keyboard?.hide()
         view.postDelayed({
             view.context.getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(view.windowToken, 0)

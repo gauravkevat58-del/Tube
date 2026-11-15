@@ -65,6 +65,8 @@ fun VideoSurface(player: Player?, modifier: Modifier = Modifier) {
         modifier = modifier,
         factory = { context ->
             TextureView(context).apply {
+                isFocusable = false
+                isFocusableInTouchMode = false
                 SharedVideoTexture.activeView = this
                 // A view created after the texture exists shows it straight away.
                 SharedVideoTexture.texture?.let { runCatching { setSurfaceTexture(it) } }

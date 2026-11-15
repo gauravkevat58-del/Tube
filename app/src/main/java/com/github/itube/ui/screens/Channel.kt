@@ -189,7 +189,7 @@ fun ChannelScreen(
             Modifier.fillMaxWidth().statusBarsPadding().padding(start = 12.dp, end = 16.dp, top = 12.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            CircleAction(Icons.AutoMirrored.Rounded.ArrowBack, "Back", Modifier.tvContentEntry("overlay:channel"), onBack)
+            CircleAction(Icons.AutoMirrored.Rounded.ArrowBack, "Back", Modifier.tvContentEntry("overlay:channel", priority = 5), onBack)
             Spacer(Modifier.width(12.dp))
             Text(
                 state.details?.name.orEmpty(),
@@ -203,7 +203,13 @@ fun ChannelScreen(
         when {
             d == null && state.error != null -> Box(Modifier.padding(top = top)) { EmptyState(
                 Icons.Rounded.CloudOff, "Couldn't load this channel", state.error.orEmpty(),
-                action = { PillButton("Try again", state::load) },
+                action = {
+                    PillButton(
+                        "Try again",
+                        state::load,
+                        modifier = Modifier.tvContentEntry("overlay:channel", centeredEmptyState = true, priority = 0),
+                    )
+                },
             ) }
             d == null -> Box(Modifier.fillMaxWidth().padding(top = top + 60.dp), Alignment.Center) {
                 MaterialLoader(color = c.primary, size = 36.dp)
@@ -248,7 +254,7 @@ fun ChannelScreen(
                             .padding(horizontal = 16.dp, vertical = 14.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        ChannelSection.entries.forEach { tab ->
+                        ChannelSection.entries.forEachIndexed { idx, tab ->
                             val active = section == tab
                             Text(
                                 tab.label,
@@ -256,6 +262,7 @@ fun ChannelScreen(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 14.sp,
                                 modifier = Modifier
+                                    .then(if (idx == 0) Modifier.tvContentEntry("overlay:channel", priority = 0) else Modifier)
                                     .pressable(focusShape = CircleShape, focusScale = 1.04f) { section = tab }
                                     .clip(CircleShape)
                                     .background(if (active) c.primary else c.surfaceContainerHigh)
@@ -575,7 +582,7 @@ fun PublicCollectionScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                    CircleAction(Icons.AutoMirrored.Rounded.ArrowBack, "Back", Modifier.tvContentEntry("overlay:collection"), onBack)
+                    CircleAction(Icons.AutoMirrored.Rounded.ArrowBack, "Back", Modifier.tvContentEntry("overlay:collection", priority = 5), onBack)
                     Spacer(Modifier.width(12.dp))
                     Text(
                         state.collection.title,
@@ -597,7 +604,20 @@ fun PublicCollectionScreen(
             val isTv = LocalIsTv.current
             when {
                 state.loading && state.details == null -> Box(Modifier.fillMaxWidth().padding(top = top + 64.dp), Alignment.Center) { MaterialLoader(color = c.primary, size = 36.dp) }
-                state.error != null -> Box(Modifier.padding(top = top)) { EmptyState(Icons.Rounded.CloudOff, "Couldn't load this ${if (state.collection.isAlbum) "album" else "playlist"}", state.error.orEmpty(), action = { PillButton("Try again", state::load) }) }
+                state.error != null -> Box(Modifier.padding(top = top)) {
+                    EmptyState(
+                        Icons.Rounded.CloudOff,
+                        "Couldn't load this ${if (state.collection.isAlbum) "album" else "playlist"}",
+                        state.error.orEmpty(),
+                        action = {
+                            PillButton(
+                                "Try again",
+                                state::load,
+                                modifier = Modifier.tvContentEntry("overlay:collection", centeredEmptyState = true, priority = 0),
+                            )
+                        },
+                    )
+                }
                 else -> {
                     val details = state.details ?: return@CollapsingHeaderLayout
                     LazyColumn(contentPadding = contentPadding.withTop(top)) {
@@ -665,6 +685,7 @@ fun PublicCollectionScreen(
                                                     }
                                                 },
                                                 icon = Icons.Rounded.PlayArrow,
+                                                modifier = Modifier.tvContentEntry("overlay:collection", priority = 0),
                                             )
                                             CircleAction(
                                                 icon = Icons.Rounded.Shuffle,

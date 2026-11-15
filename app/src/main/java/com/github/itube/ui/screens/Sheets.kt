@@ -68,6 +68,7 @@ import com.github.itube.ui.components.BlurSetting
 import com.github.itube.ui.components.TrackBlurPopup
 import com.github.itube.ui.components.popupContainerColor
 import com.github.itube.ui.components.popupScrimColor
+import com.github.itube.ui.tv.LocalIsTv
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -323,6 +324,7 @@ private fun NewPlaylistRow(onCreate: (title: String, privacy: String) -> Unit) {
     var title by remember { mutableStateOf("") }
     var privacy by remember { mutableStateOf("PRIVATE") }
     val focus = LocalFocusManager.current
+    val isTv = LocalIsTv.current
     val keyboard = LocalSoftwareKeyboardController.current
     val view = LocalView.current
     val focusRequester = remember { FocusRequester() }
@@ -331,7 +333,11 @@ private fun NewPlaylistRow(onCreate: (title: String, privacy: String) -> Unit) {
         val name = title.trim()
         if (name.isEmpty()) return
         // As on every field: Done closes the keyboard (the window-level hide comes later or the IME undoes it).
-        focus.clearFocus(force = true)
+        if (!isTv) {
+            focus.clearFocus(force = true)
+        } else {
+            focus.moveFocus(FocusDirection.Up)
+        }
         keyboard?.hide()
         view.postDelayed({ view.context.getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(view.windowToken, 0) }, 120)
         onCreate(name, privacy)
