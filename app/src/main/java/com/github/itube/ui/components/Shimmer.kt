@@ -61,40 +61,44 @@ fun shimmerBrush(targetValue: Float = 1200f): Brush {
 /** Single video card skeleton placeholder for Home/Feed screens. */
 @Composable
 fun VideoCardSkeleton(modifier: Modifier = Modifier) {
+    val isTv = com.github.itube.ui.tv.LocalIsTv.current
     val brush = shimmerBrush()
-    Column(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
-        // Thumbnail placeholder
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(
+                horizontal = if (isTv) 8.dp else 16.dp,
+                vertical = if (isTv) 8.dp else 10.dp,
+            ),
+    ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(20.dp))
+                .clip(RoundedCornerShape(if (isTv) 12.dp else 20.dp))
                 .background(brush)
         )
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(if (isTv) 10.dp else 12.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // Avatar placeholder
             Box(
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(if (isTv) 34.dp else 40.dp)
                     .clip(CircleShape)
                     .background(brush)
             )
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
-                // Title line placeholder
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(0.85f)
-                        .height(16.dp)
+                        .height(15.dp)
                         .clip(RoundedCornerShape(4.dp))
                         .background(brush)
                 )
                 Spacer(Modifier.height(6.dp))
-                // Subtitle line placeholder
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(0.5f)
+                        .fillMaxWidth(0.55f)
                         .height(12.dp)
                         .clip(RoundedCornerShape(4.dp))
                         .background(brush)
@@ -104,9 +108,25 @@ fun VideoCardSkeleton(modifier: Modifier = Modifier) {
     }
 }
 
-/** Home screen skeleton loading list. */
+/** Home screen skeleton loading list / TV grid. */
 @Composable
 fun HomeScreenSkeleton(modifier: Modifier = Modifier) {
+    val isTv = com.github.itube.ui.tv.LocalIsTv.current
+    if (isTv) {
+        Column(modifier = modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
+            repeat(2) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    repeat(3) {
+                        Box(Modifier.weight(1f)) { VideoCardSkeleton() }
+                    }
+                }
+            }
+        }
+        return
+    }
     Column(modifier = modifier.fillMaxWidth()) {
         repeat(4) {
             VideoCardSkeleton()

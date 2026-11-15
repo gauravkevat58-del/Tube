@@ -453,8 +453,17 @@ object ThemeSettings {
 
     fun init(context: Context) {
         val p = context.getSharedPreferences("appearance", Context.MODE_PRIVATE).also { prefs = it }
-        seed = p.getString("seed", null) ?: if (wallpaperAvailable) null else SEED_CREAM_ROSE
-        val defaultMode = if (com.github.itube.ui.tv.TvHelper.isTvDevice(context)) "dark" else "system"
+        val isTv = com.github.itube.ui.tv.TvHelper.isTvDevice(context)
+        seed = if (p.contains("seed")) {
+            p.getString("seed", null)
+        } else {
+            when {
+                isTv -> SEED_YOUTUBE
+                wallpaperAvailable -> null
+                else -> SEED_CREAM_ROSE
+            }
+        }
+        val defaultMode = if (isTv) "dark" else "system"
         mode = p.getString("mode", null) ?: defaultMode
     }
 
@@ -494,10 +503,10 @@ private fun youTubeScheme(dark: Boolean): ColorScheme = if (!dark) lightColorSch
     background = Color(0xFF0F0F0F), onBackground = Color(0xFFF1F1F1),
     surface = Color(0xFF0F0F0F), onSurface = Color(0xFFF1F1F1),
     surfaceVariant = Color(0xFF272727), onSurfaceVariant = Color(0xFFAAAAAA),
-    surfaceContainerLowest = Color(0xFF0A0A0A), surfaceContainerLow = Color(0xFF181818),
-    surfaceContainer = Color(0xFF212121), surfaceContainerHigh = Color(0xFF2C2C2C),
-    surfaceContainerHighest = Color(0xFF3A3A3A),
-    outline = Color(0xFF717171), outlineVariant = Color(0xFF303030),
+    surfaceContainerLowest = Color(0xFF090909), surfaceContainerLow = Color(0xFF161616),
+    surfaceContainer = Color(0xFF212121), surfaceContainerHigh = Color(0xFF282828),
+    surfaceContainerHighest = Color(0xFF383838),
+    outline = Color(0xFF717171), outlineVariant = Color(0xFF2C2C2C),
 )
 
 /** Every pickable theme: YouTube first, then Ledgii's in Ledgii's order. */

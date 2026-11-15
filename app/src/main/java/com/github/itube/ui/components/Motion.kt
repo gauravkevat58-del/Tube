@@ -85,10 +85,12 @@ fun Modifier.pressable(
     focusBorderWidth: Dp = 2.75.dp,
     focusShape: Shape? = null,
     focusBorderColor: Color? = null,
+    showFocusBorder: Boolean = true,
     onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ): Modifier = composed {
     val view = LocalView.current
+    val isTv = com.github.itube.ui.tv.LocalIsTv.current
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     var rawFocused by remember { mutableStateOf(false) }
@@ -106,7 +108,7 @@ fun Modifier.pressable(
         label = "pressScale",
     )
     val c = MaterialTheme.colorScheme
-    val strokeColor = focusBorderColor ?: c.primary
+    val strokeColor = focusBorderColor ?: if (isTv) Color.White else c.primary
     val innerHalo = if (strokeColor.luminance() > 0.45f) Color.Black.copy(alpha = 0.72f) else Color.White.copy(alpha = 0.88f)
     val shape = focusShape ?: RoundedCornerShape(18.dp)
 
@@ -115,11 +117,11 @@ fun Modifier.pressable(
         .graphicsLayer {
             scaleX = scale
             scaleY = scale
-            if (focused) shadowElevation = 12f
+            if (focused && showFocusBorder) shadowElevation = 12f
         }
         .drawWithContent {
             drawContent()
-            if (focused) {
+            if (focused && showFocusBorder) {
                 val outline = shape.createOutline(size, layoutDirection, this)
                 drawOutline(
                     outline = outline,

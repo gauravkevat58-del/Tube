@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -24,6 +25,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.FastForward
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
@@ -41,12 +43,15 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -54,6 +59,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
@@ -68,6 +74,7 @@ import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.onGloballyPositioned
 import com.github.itube.ui.tv.LocalIsTv
 import com.github.itube.ui.tv.LocalTvFocusBridge
@@ -134,34 +141,44 @@ fun ScreenHeader(
         modifier = Modifier
             .fillMaxWidth()
             .statusBarsPadding()
-            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 12.dp)
+            .padding(
+                start = if (isTv) 20.dp else 16.dp,
+                end = if (isTv) 20.dp else 16.dp,
+                top = if (isTv) 14.dp else 12.dp,
+                bottom = if (isTv) 8.dp else 12.dp,
+            )
             .height(44.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (brandMark) {
-            BrandMark()
-            Spacer(Modifier.width(4.dp))
-        }
-        val headerTitle = buildAnnotatedString {
-            if (brandMark && (title == "iTube" || title == "iTube TV")) {
-                pushStyle(SpanStyle(color = Color(0xFFFF0000)))
-                append("i")
-                pop()
-                append(if (title == "iTube TV") "Tube TV" else "Tube")
-            } else {
-                append(title)
+        if (isTv && brandMark) {
+            YouTubeTvHeaderBrand(modifier = Modifier.weight(1f))
+        } else {
+            if (brandMark) {
+                BrandMark()
+                Spacer(Modifier.width(4.dp))
             }
+            val headerTitle = buildAnnotatedString {
+                if (brandMark && (title == "iTube" || title == "iTube TV")) {
+                    pushStyle(SpanStyle(color = Color(0xFFFF0000)))
+                    append("i")
+                    pop()
+                    append(if (title == "iTube TV") "Tube TV" else "Tube")
+                } else {
+                    append(title)
+                }
+            }
+            Text(
+                text = headerTitle,
+                modifier = Modifier.weight(1f),
+                color = MaterialTheme.colorScheme.onSurface,
+                fontFamily = if (isTv) FontFamily.SansSerif else RoundedHeavy,
+                fontWeight = if (isTv) FontWeight.Bold else FontWeight.ExtraBold,
+                fontSize = if (isTv) 24.sp else 31.sp,
+                letterSpacing = if (isTv) (-0.4).sp else (-1.3).sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
-        Text(
-            text = headerTitle,
-            modifier = Modifier.weight(1f),
-            color = MaterialTheme.colorScheme.onSurface,
-            fontFamily = RoundedHeavy,
-            fontWeight = FontWeight.ExtraBold,
-            fontSize = 31.sp,
-            letterSpacing = (-1.3).sp,
-            maxLines = 1,
-        )
         Row(
             modifier = Modifier
                 .onGloballyPositioned { headerAttached = it.isAttached }
@@ -184,6 +201,55 @@ fun ScreenHeader(
 }
 
 @Composable
+private fun YouTubeTvHeaderBrand(modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(width = 32.dp, height = 22.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(Color(0xFFFF0000)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.PlayArrow,
+                contentDescription = "iTube TV",
+                tint = Color.White,
+                modifier = Modifier.size(16.dp),
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = "iTube",
+            color = MaterialTheme.colorScheme.onSurface,
+            fontFamily = FontFamily.SansSerif,
+            fontWeight = FontWeight.Bold,
+            fontSize = 23.sp,
+            letterSpacing = (-0.8).sp,
+            maxLines = 1,
+        )
+        Spacer(Modifier.width(7.dp))
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(4.dp))
+                .background(Color(0xFF272727))
+                .padding(horizontal = 6.dp, vertical = 2.dp),
+        ) {
+            Text(
+                text = "TV",
+                color = Color(0xFFAAAAAA),
+                fontFamily = FontFamily.SansSerif,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 11.sp,
+                letterSpacing = 0.6.sp,
+            )
+        }
+    }
+}
+
+@Composable
 fun BrandMark() {
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     Image(
@@ -202,27 +268,38 @@ fun CircleAction(icon: ImageVector, contentDescription: String, onClick: () -> U
 @Composable
 fun CircleAction(icon: ImageVector, contentDescription: String, modifier: Modifier, onClick: () -> Unit) {
     val c = MaterialTheme.colorScheme
+    val isTv = LocalIsTv.current
+    var focused by remember { mutableStateOf(false) }
+    val bg = if (isTv && focused) Color.White else if (isTv) Color(0xFF212121) else c.surfaceContainerHigh
+    val tint = if (isTv && focused) Color(0xFF0F0F0F) else c.onSurface
     Box(
         modifier = modifier
-            .size(48.dp)
-            .pressable(focusShape = CircleShape, onClick = onClick)
+            .size(if (isTv) 44.dp else 48.dp)
+            .onFocusChanged { focused = it.hasFocus || it.isFocused }
+            .pressable(focusShape = CircleShape, showFocusBorder = !isTv, onClick = onClick)
             .clip(CircleShape)
-            .background(c.surfaceContainerHigh),
+            .background(bg),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription, tint = c.onSurface, modifier = Modifier.size(22.dp))
+        Icon(icon, contentDescription, tint = tint, modifier = Modifier.size(21.dp))
     }
 }
 
 @Composable
 fun SectionTitle(text: String, modifier: Modifier = Modifier) {
+    val isTv = LocalIsTv.current
     Text(
         text = text,
-        modifier = modifier.padding(start = 20.dp, end = 20.dp, top = 22.dp, bottom = 10.dp),
-        fontFamily = RoundedHeavy,
-        fontWeight = FontWeight.ExtraBold,
-        fontSize = 21.sp,
-        letterSpacing = (-0.6).sp,
+        modifier = modifier.padding(
+            start = 20.dp,
+            end = 20.dp,
+            top = if (isTv) 18.dp else 22.dp,
+            bottom = if (isTv) 10.dp else 10.dp,
+        ),
+        fontFamily = if (isTv) FontFamily.SansSerif else RoundedHeavy,
+        fontWeight = if (isTv) FontWeight.Bold else FontWeight.ExtraBold,
+        fontSize = if (isTv) 18.sp else 21.sp,
+        letterSpacing = if (isTv) (-0.2).sp else (-0.6).sp,
     )
 }
 
@@ -295,13 +372,23 @@ fun Thumbnail(
 @Composable
 fun DurationPill(seconds: Long, modifier: Modifier = Modifier, small: Boolean = false) {
     if (seconds <= 0) return
+    val isTv = LocalIsTv.current
+    val shape = if (isTv) RoundedCornerShape(4.dp) else CircleShape
     Box(
         modifier = modifier
-            .clip(CircleShape)
-            .background(Color.Black.copy(alpha = 0.72f))
-            .padding(horizontal = if (small) 7.dp else 9.dp, vertical = if (small) 2.dp else 4.dp),
+            .clip(shape)
+            .background(Color.Black.copy(alpha = if (isTv) 0.85f else 0.72f))
+            .padding(
+                horizontal = if (isTv) 6.dp else if (small) 7.dp else 9.dp,
+                vertical = if (isTv) 2.dp else if (small) 2.dp else 4.dp,
+            ),
     ) {
-        Text(formatDuration(seconds * 1000), color = Color.White, fontSize = if (small) 11.sp else 12.sp, fontWeight = FontWeight.Bold)
+        Text(
+            formatDuration(seconds * 1000),
+            color = Color.White,
+            fontSize = if (isTv || small) 11.sp else 12.sp,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
 
@@ -312,8 +399,10 @@ fun DurationPill(seconds: Long, modifier: Modifier = Modifier, small: Boolean = 
 @Composable
 fun ChannelAvatar(url: String?, name: String, size: Int = 40) {
     val c = MaterialTheme.colorScheme
+    val isTv = LocalIsTv.current
+    val fallbackShape = if (isTv) CircleShape else CookieShape
     Box(
-        modifier = Modifier.size(size.dp).clip(if (url != null) CircleShape else CookieShape).background(c.tertiaryContainer),
+        modifier = Modifier.size(size.dp).clip(if (url != null) CircleShape else fallbackShape).background(c.tertiaryContainer),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -329,14 +418,80 @@ fun ChannelAvatar(url: String?, name: String, size: Int = 40) {
 }
 
 /**
- * Full-width feed card: rounded thumbnail inside a 28 dp card, then avatar + title + meta.
- * The thumbnail sits 11 dp from the screen's edge (6 + 5), half the old 22 (Derek, 2026-10-31: wider thumbnails).
+ * Feed video card:
+ * - On Android TV: authentic borderless YouTube TV thumbnail-first card with tight white
+ *   focus outline directly around the 16:9 thumbnail, flush red progress bar, and crisp meta.
+ * - On Mobile: preserves the rounded card container design.
  */
 @Composable
 fun VideoCard(video: VideoItem, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val c = MaterialTheme.colorScheme
     val menu = LocalVideoMenu.current
     val isTv = LocalIsTv.current
+    if (isTv) {
+        var focused by remember { mutableStateOf(false) }
+        val thumbShape = RoundedCornerShape(12.dp)
+        Column(
+            modifier = modifier
+                .padding(horizontal = 8.dp, vertical = 8.dp)
+                .fillMaxWidth()
+                .prefetchOnPress(video.id)
+                .onFocusChanged { focused = it.hasFocus || it.isFocused }
+                .pressable(
+                    pressedScale = 0.97f,
+                    focusScale = 1.03f,
+                    showFocusBorder = false,
+                    onLongClick = { menu(video) },
+                    onClick = onClick,
+                ),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(16f / 9f)
+                    .clip(thumbShape)
+                    .drawWithContent {
+                        drawContent()
+                        if (focused) {
+                            val outline = thumbShape.createOutline(size, layoutDirection, this)
+                            drawOutline(
+                                outline = outline,
+                                color = Color.Black.copy(alpha = 0.78f),
+                                style = Stroke(width = 4.2.dp.toPx()),
+                            )
+                            drawOutline(
+                                outline = outline,
+                                color = Color.White,
+                                style = Stroke(width = 2.6.dp.toPx()),
+                            )
+                        }
+                    },
+            ) {
+                Thumbnail(video.thumbnail, Modifier.fillMaxSize(), radius = 0)
+                DurationPill(video.durationSec, Modifier.align(Alignment.BottomEnd).padding(8.dp), small = true)
+                ResumeBar(video.id, Modifier.align(Alignment.BottomStart))
+            }
+            Row(modifier = Modifier.padding(top = 10.dp, bottom = 4.dp, end = 4.dp)) {
+                ChannelAvatar(video.avatar, video.channel, size = 34)
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        video.title,
+                        color = if (focused) Color.White else c.onSurface,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.5.sp,
+                        lineHeight = 19.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(3.dp))
+                    CardMeta(video)
+                }
+            }
+        }
+        return
+    }
+
     val shape = RoundedCornerShape(26.dp)
     Column(
         modifier = modifier
@@ -356,12 +511,8 @@ fun VideoCard(video: VideoItem, onClick: () -> Unit, modifier: Modifier = Modifi
         }
         Row(modifier = Modifier.padding(start = 8.dp, end = 6.dp, top = 12.dp, bottom = 10.dp)) {
             val openChannel = LocalChannelOpener.current
-            if (isTv) {
+            Box(Modifier.pressable(enabled = video.channelUrl != null, focusShape = CircleShape) { video.channelUrl?.let(openChannel) }) {
                 ChannelAvatar(video.avatar, video.channel)
-            } else {
-                Box(Modifier.pressable(enabled = video.channelUrl != null, focusShape = CircleShape) { video.channelUrl?.let(openChannel) }) {
-                    ChannelAvatar(video.avatar, video.channel)
-                }
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
@@ -452,6 +603,13 @@ fun VideoRow(video: VideoItem, onClick: () -> Unit, trailing: (@Composable () ->
 fun ResumeBar(videoId: String, modifier: Modifier = Modifier) {
     val progress = ResumeStore.progress(videoId) ?: return
     val c = MaterialTheme.colorScheme
+    val isTv = LocalIsTv.current
+    if (isTv) {
+        Box(modifier.fillMaxWidth().height(3.dp).background(Color.White.copy(alpha = 0.30f))) {
+            Box(Modifier.fillMaxWidth(progress).height(3.dp).background(Color(0xFFFF0000)))
+        }
+        return
+    }
     Box(modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp).height(4.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.45f))) {
         Box(Modifier.fillMaxWidth(progress).height(4.dp).clip(CircleShape).background(c.primary))
     }
@@ -519,20 +677,30 @@ fun PillButton(
     modifier: Modifier = Modifier,
 ) {
     val c = MaterialTheme.colorScheme
+    val isTv = LocalIsTv.current
+    var focused by remember { mutableStateOf(false) }
+    val bg = if (isTv) {
+        if (focused) Color.White else Color(0xFF272727)
+    } else c.primary
+    val ink = if (isTv) {
+        if (focused) Color(0xFF0F0F0F) else Color(0xFFF1F1F1)
+    } else c.onPrimary
+    val btnShape = if (isTv) RoundedCornerShape(8.dp) else CircleShape
     Row(
         modifier = modifier
-            .pressable(focusShape = CircleShape, focusScale = 1.06f, focusBorderColor = c.onSurface, onClick = onClick)
+            .onFocusChanged { focused = it.hasFocus || it.isFocused }
+            .pressable(focusShape = btnShape, focusScale = 1.05f, showFocusBorder = !isTv, onClick = onClick)
             .height(48.dp)
-            .clip(CircleShape)
-            .background(c.primary)
+            .clip(btnShape)
+            .background(bg)
             .padding(horizontal = 22.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
-            Icon(icon, null, tint = c.onPrimary, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(6.dp))
+            Icon(icon, null, tint = ink, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
         }
-        Text(text, color = c.onPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+        Text(text, color = ink, fontWeight = FontWeight.Bold, fontSize = 14.sp)
     }
 }
 

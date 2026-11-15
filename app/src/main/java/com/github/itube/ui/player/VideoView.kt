@@ -30,6 +30,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
@@ -66,6 +68,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -102,6 +105,8 @@ import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.RepeatOne
 import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.ClosedCaption
+import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.luminance
 import com.github.itube.ui.components.MaterialLoader
 import androidx.compose.ui.draw.blur
@@ -155,6 +160,7 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -323,9 +329,8 @@ fun VideoContent(
             .background(Color.Black)
             .onGloballyPositioned { pip?.videoBounds = it.boundsInWindow() }
             .then(
-                if (isTv && !controlsVisible && stageFocused) {
-                    val alpha = if (!fullscreen || !state.isPlaying) 0.92f else 0.42f
-                    Modifier.border(2.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = alpha))
+                if (isTv && !controlsVisible && stageFocused && (!fullscreen || !state.isPlaying)) {
+                    Modifier.border(2.dp, Color.White.copy(alpha = 0.72f))
                 } else Modifier
             )
             .onFocusChanged { stageFocused = it.isFocused }
@@ -598,17 +603,17 @@ fun VideoContent(
             Box(
                 Modifier.fillMaxSize().background(
                     Brush.verticalGradient(
-                        0f to Color.Black.copy(alpha = 0.5f),
-                        0.32f to Color.Black.copy(alpha = 0.08f),
-                        0.58f to Color.Black.copy(alpha = 0.08f),
-                        1f to Color.Black.copy(alpha = 0.62f),
+                        0f to Color.Black.copy(alpha = if (isTv && fullscreen) 0.74f else 0.5f),
+                        0.32f to Color.Black.copy(alpha = if (isTv && fullscreen) 0.06f else 0.08f),
+                        0.56f to Color.Black.copy(alpha = if (isTv && fullscreen) 0.08f else 0.08f),
+                        1f to Color.Black.copy(alpha = if (isTv && fullscreen) 0.88f else 0.62f),
                     ),
                 ),
             )
             // Drawn like the playback pill's buttons (0.5.67): the bar's tone for the round ones, a
             // full-primary circle, a size up, for play.
             val tool = if (fullscreen) 40.dp else 36.dp
-            val inset = if (fullscreen) Modifier.windowInsetsPadding(WindowInsets.displayCutout).padding(horizontal = 12.dp, vertical = 8.dp) else Modifier
+            val inset = if (fullscreen) Modifier.windowInsetsPadding(WindowInsets.displayCutout).padding(horizontal = if (isTv) 20.dp else 12.dp, vertical = if (isTv) 12.dp else 8.dp) else Modifier
             // Fullscreen's quality and speed cards hang from their pills: both measured where the tap happens.
             val dropAnchors = remember { arrayOfNulls<LayoutCoordinates>(4) }
             var dropAnchor by remember { mutableStateOf(Rect.Zero) }
@@ -637,6 +642,40 @@ fun VideoContent(
                             Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Exit portrait fullscreen", tint = ink, modifier = Modifier.size(tool * 0.52f))
                         }
                         Spacer(Modifier.weight(1f))
+                    } else if (fullscreen && isTv) {
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 16.dp)
+                                .pressable(enabled = enabled, focusShape = RoundedCornerShape(8.dp), showFocusBorder = true) {
+                                    touched(); state.sheet = PlayerSheet.Description
+                                }
+                                .padding(horizontal = 6.dp, vertical = 4.dp),
+                        ) {
+                            Text(
+                                state.current?.title.orEmpty(),
+                                color = Color.White,
+                                fontFamily = FontFamily.SansSerif,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 20.sp,
+                                lineHeight = 24.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            val videoMeta = state.current?.let { metaLine(it.channel, it.views, it.uploaded) }.orEmpty()
+                            if (videoMeta.isNotBlank()) {
+                                Spacer(Modifier.height(3.dp))
+                                Text(
+                                    videoMeta,
+                                    color = Color.White.copy(alpha = 0.78f),
+                                    fontFamily = FontFamily.SansSerif,
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 13.5.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
                     } else if (fullscreen) {
                         Text(
                             state.current?.title.orEmpty(),
@@ -729,8 +768,12 @@ fun VideoContent(
                     horizontalArrangement = Arrangement.spacedBy(if (fullscreen) 32.dp else 18.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    OverlayTile("Previous", enabled, seek, onClick = { touched(); state.playPrevious() }) {
-                        Icon(painterResource(R.drawable.flow_previous), null, tint = Color.Unspecified, modifier = Modifier.size(if (fullscreen) 30.dp else 26.dp))
+                    OverlayTile("Previous", enabled, seek, onClick = { touched(); state.playPrevious() }) { ink ->
+                        if (isTv) {
+                            Icon(Icons.Rounded.SkipPrevious, null, tint = ink, modifier = Modifier.size(if (fullscreen) 32.dp else 26.dp))
+                        } else {
+                            Icon(painterResource(R.drawable.flow_previous), null, tint = Color.Unspecified, modifier = Modifier.size(if (fullscreen) 30.dp else 26.dp))
+                        }
                     }
                     OverlayPlay(
                         playing = state.isPlaying,
@@ -739,8 +782,12 @@ fun VideoContent(
                         enabled = enabled,
                         modifier = Modifier.focusRequester(playFocusRequester),
                     ) { touched(); state.togglePlay() }
-                    OverlayTile("Next", enabled, seek, onClick = { touched(); state.playNextUp() }) {
-                        Icon(painterResource(R.drawable.flow_next), null, tint = Color.Unspecified, modifier = Modifier.size(if (fullscreen) 30.dp else 26.dp))
+                    OverlayTile("Next", enabled, seek, onClick = { touched(); state.playNextUp() }) { ink ->
+                        if (isTv) {
+                            Icon(Icons.Rounded.SkipNext, null, tint = ink, modifier = Modifier.size(if (fullscreen) 32.dp else 26.dp))
+                        } else {
+                            Icon(painterResource(R.drawable.flow_next), null, tint = Color.Unspecified, modifier = Modifier.size(if (fullscreen) 30.dp else 26.dp))
+                        }
                     }
                 }
                 // Times, the Ask pill, Next and fullscreen; under them the scrubber in fullscreen. In portrait
@@ -867,7 +914,8 @@ fun VideoContent(
                                 )
                             }
 
-                            // Right-hand next / more video pill
+                            val tvRelated = if (isTv && !isPortraitFullscreen) state.details?.related.orEmpty().take(10) else emptyList()
+                            // Right-hand next / more video pill (kept for phone & TV fallback when no related list yet)
                             if (isPortraitFullscreen) {
                                 // Portrait: Thumbnail only (no text), tapping exits fullscreen
                                 Box(
@@ -898,7 +946,7 @@ fun VideoContent(
                                         )
                                     }
                                 }
-                            } else {
+                            } else if (tvRelated.isEmpty()) {
                                 // Landscape: "More videos" text + thumbnail capsule, tapping exits fullscreen
                                 Row(
                                     modifier = Modifier
@@ -942,6 +990,20 @@ fun VideoContent(
                                         }
                                     }
                                 }
+                            }
+                        }
+                        if (isTv && !isPortraitFullscreen) {
+                            val tvRelated = state.details?.related.orEmpty().take(10)
+                            if (tvRelated.isNotEmpty()) {
+                                Spacer(Modifier.height(10.dp))
+                                TvPlayerRelatedShelf(
+                                    videos = tvRelated,
+                                    enabled = enabled,
+                                    onSelect = { video ->
+                                        touched()
+                                        state.open(video)
+                                    },
+                                )
                             }
                         }
                     }
@@ -1016,7 +1078,7 @@ private fun VideoScrubberSlot(
         onSeek = onSeek,
         track = Color.White.copy(alpha = 0.32f),
         buffered = Color.White.copy(alpha = 0.45f),
-        played = MaterialTheme.colorScheme.primary,
+        played = if (LocalIsTv.current) Color(0xFFFF0000) else MaterialTheme.colorScheme.primary,
         trackHeight = 3.dp,
         chapters = state.details?.chapters.orEmpty().map { it.startMs },
     )
@@ -1202,6 +1264,73 @@ fun AudioOnlyStage(
 }
 
 @Composable
+private fun TvPlayerRelatedShelf(
+    videos: List<VideoItem>,
+    enabled: Boolean,
+    onSelect: (VideoItem) -> Unit,
+) {
+    Column(Modifier.fillMaxWidth()) {
+        Text(
+            text = "More videos",
+            color = Color.White.copy(alpha = 0.92f),
+            fontFamily = FontFamily.SansSerif,
+            fontWeight = FontWeight.Bold,
+            fontSize = 13.5.sp,
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+        )
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            items(videos, key = { "tv-osd-rel-${it.id}" }) { video ->
+                var focused by remember { mutableStateOf(false) }
+                val shape = RoundedCornerShape(10.dp)
+                Column(
+                    modifier = Modifier
+                        .width(184.dp)
+                        .onFocusChanged { focused = it.hasFocus || it.isFocused }
+                        .pressable(
+                            enabled = enabled,
+                            pressedScale = 0.97f,
+                            focusScale = 1.04f,
+                            showFocusBorder = false,
+                            onClick = { onSelect(video) },
+                        ),
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(16f / 9f)
+                            .clip(shape)
+                            .drawWithContent {
+                                drawContent()
+                                if (focused) {
+                                    val outline = shape.createOutline(size, layoutDirection, this)
+                                    drawOutline(outline, Color.Black.copy(alpha = 0.8f), style = Stroke(3.6.dp.toPx()))
+                                    drawOutline(outline, Color.White, style = Stroke(2.4.dp.toPx()))
+                                }
+                            },
+                    ) {
+                        Thumbnail(video.thumbnail, Modifier.fillMaxSize(), radius = 0)
+                        DurationPill(video.durationSec, Modifier.align(Alignment.BottomEnd).padding(6.dp), small = true)
+                    }
+                    Spacer(Modifier.height(5.dp))
+                    Text(
+                        text = video.title,
+                        color = if (focused) Color.White else Color.White.copy(alpha = 0.82f),
+                        fontFamily = FontFamily.SansSerif,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun FullscreenActionButton(
     icon: Int,
     contentDescription: String,
@@ -1209,17 +1338,27 @@ private fun FullscreenActionButton(
     enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
+    val isTv = LocalIsTv.current
+    var focused by remember { mutableStateOf(false) }
+    val bg = when {
+        isTv && focused -> Color.White
+        isTv -> Color.White.copy(alpha = 0.14f)
+        else -> Color.Transparent
+    }
+    val iconTint = if (isTv && focused) Color(0xFF0F0F0F) else tint
     Box(
         modifier = Modifier
             .size(44.dp)
-            .pressable(enabled = enabled, focusShape = CircleShape, onClick = onClick)
-            .clip(CircleShape),
+            .onFocusChanged { focused = it.hasFocus || it.isFocused }
+            .pressable(enabled = enabled, focusShape = CircleShape, showFocusBorder = !isTv, onClick = onClick)
+            .clip(CircleShape)
+            .background(bg),
         contentAlignment = Alignment.Center
     ) {
         Icon(
             painter = painterResource(icon),
             contentDescription = contentDescription,
-            tint = tint,
+            tint = iconTint,
             modifier = Modifier.size(22.dp)
         )
     }
@@ -1241,16 +1380,29 @@ private fun OverlayTile(
     content: @Composable (ink: Color) -> Unit,
 ) {
     val view = LocalView.current
+    val isTv = LocalIsTv.current
+    var focused by remember { mutableStateOf(false) }
+    val bg = when {
+        isTv && focused -> Color.White
+        isTv && filled -> Color.White.copy(alpha = 0.30f)
+        isTv -> Color.White.copy(alpha = 0.16f)
+        filled -> PlayerGlassStrong
+        else -> tile
+    }
+    val ink = if (isTv && focused) Color(0xFF0F0F0F) else Color.White
     Box(
         modifier
             .squishOn(filled)
             .size(size)
-            .pressable(enabled = enabled, focusShape = CircleShape) { view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK); onClick() }
+            .onFocusChanged { focused = it.hasFocus || it.isFocused }
+            .pressable(enabled = enabled, focusShape = CircleShape, showFocusBorder = !isTv) {
+                view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK); onClick()
+            }
             .clip(CircleShape)
-            .background(if (filled) PlayerGlassStrong else tile)
+            .background(bg)
             .semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
-    ) { content(Color.White) }
+    ) { content(ink) }
 }
 
 /** A worded control on the video (speed, quality): a capsule [height] tall, otherwise [OverlayTile]'s look. */
@@ -1266,19 +1418,32 @@ private fun OverlayPill(
     onClick: () -> Unit,
 ) {
     val view = LocalView.current
+    val isTv = LocalIsTv.current
+    var focused by remember { mutableStateOf(false) }
+    val bg = when {
+        isTv && focused -> Color.White
+        isTv && filled -> Color.White.copy(alpha = 0.30f)
+        isTv -> Color.White.copy(alpha = 0.16f)
+        filled -> PlayerGlassStrong
+        else -> tile
+    }
+    val ink = if (isTv && focused) Color(0xFF0F0F0F) else Color.White
     Box(
         modifier
             .squishOn(filled)
             .height(height)
             .widthIn(min = height)
-            .pressable(enabled = enabled, focusShape = CircleShape) { view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK); onClick() }
+            .onFocusChanged { focused = it.hasFocus || it.isFocused }
+            .pressable(enabled = enabled, focusShape = CircleShape, showFocusBorder = !isTv) {
+                view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK); onClick()
+            }
             .clip(CircleShape)
-            .background(if (filled) PlayerGlassStrong else tile)
+            .background(bg)
             .padding(horizontal = 11.dp)
             .semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
+        Text(label, color = ink, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
     }
 }
 
@@ -1322,16 +1487,34 @@ private fun OverlayPlay(
     onClick: () -> Unit,
 ) {
     val view = LocalView.current
+    val isTv = LocalIsTv.current
+    var focused by remember { mutableStateOf(false) }
+    val bg = when {
+        isTv && focused -> Color.White
+        isTv -> Color.White.copy(alpha = 0.22f)
+        else -> PlayerGlassStrong
+    }
+    val ink = if (isTv && focused) Color(0xFF0F0F0F) else Color.White
     Box(
         modifier
             .size(size)
-            .pressable(enabled = enabled, focusShape = CircleShape) { view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK); onClick() }
+            .onFocusChanged { focused = it.hasFocus || it.isFocused }
+            .pressable(enabled = enabled, focusShape = CircleShape, showFocusBorder = !isTv) {
+                view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK); onClick()
+            }
             .clip(CircleShape)
-            .background(PlayerGlassStrong),
+            .background(bg),
         contentAlignment = Alignment.Center,
     ) {
         if (buffering) {
-            MaterialLoader(color = Color.White, size = size * 0.45f)
+            MaterialLoader(color = ink, size = size * 0.45f)
+        } else if (isTv) {
+            Icon(
+                if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                if (playing) "Pause" else "Play",
+                tint = ink,
+                modifier = Modifier.size(size * 0.52f).squishOn(playing),
+            )
         } else {
             Icon(
                 painterResource(if (playing) R.drawable.flow_pause else R.drawable.flow_play),

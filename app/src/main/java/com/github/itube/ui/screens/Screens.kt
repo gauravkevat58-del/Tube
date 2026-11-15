@@ -79,6 +79,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.derivedStateOf
@@ -88,9 +89,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -109,6 +113,7 @@ import com.github.itube.ui.tv.tvContentEntry
 import com.github.itube.ui.tv.tvFocusRing
 import com.github.itube.ui.tv.tvGridColumns
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -116,6 +121,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.window.DialogProperties
+import com.github.itube.ui.components.HomeScreenSkeleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -127,6 +133,55 @@ import kotlinx.coroutines.withTimeoutOrNull
 // in brings rather than showing sample content.
 
 val LocalPlaylistMenu = staticCompositionLocalOf<(PlaylistRef) -> Unit> { {} }
+
+enum class TvHomeChip(val label: String) {
+    All("All"),
+    Music("Music"),
+    News("News"),
+    Shorts("Shorts"),
+    Mixes("Mixes"),
+}
+
+@Composable
+private fun YouTubeTvFilterChip(
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(8.dp)
+    val bg = when {
+        focused -> Color.White
+        selected -> Color(0xFFF1F1F1)
+        else -> Color(0xFF272727)
+    }
+    val ink = if (focused || selected) Color(0xFF0F0F0F) else Color(0xFFF1F1F1)
+    Box(
+        modifier = modifier
+            .onFocusChanged { focused = it.hasFocus || it.isFocused }
+            .pressable(
+                pressedScale = 0.96f,
+                focusScale = 1.04f,
+                focusShape = shape,
+                showFocusBorder = false,
+                onClick = onClick,
+            )
+            .clip(shape)
+            .background(bg)
+            .padding(horizontal = 16.dp, vertical = 9.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            color = ink,
+            fontFamily = FontFamily.SansSerif,
+            fontWeight = if (focused || selected) FontWeight.Bold else FontWeight.Medium,
+            fontSize = 14.sp,
+            maxLines = 1,
+        )
+    }
+}
 
 @Composable
 fun HomeScreen(
@@ -145,39 +200,80 @@ fun HomeScreen(
     LaunchedEffect(signedIn) { if (signedIn) lib.home.ensureLoaded() }
     LaunchedEffect(Unit) { shorts.ensureFeed() }
     val isTv = LocalIsTv.current
+    val c = MaterialTheme.colorScheme
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     val homeGridCols = if (isTv) tvGridColumns(screenWidth, minColumnWidth = 280.dp, maxColumns = 3) else 1
+    var selectedChip by remember { mutableStateOf(TvHomeChip.All) }
+    var newsVideos by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
+    var newsLoading by remember { mutableStateOf(false) }
+    var newsError by remember { mutableStateOf<String?>(null) }
+    var newsReloadKey by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(isTv, signedIn, selectedChip, newsReloadKey) {
+        if (isTv && signedIn && selectedChip == TvHomeChip.News && (newsVideos.isEmpty() || newsReloadKey > 0)) {
+            newsLoading = true
+            newsError = null
+            runCatching { YouTube.search("latest news", SearchFilter.News) }
+                .onSuccess { results ->
+                    newsVideos = results.mapNotNull { it.video }.filterNot { it.isShortVideo }.distinctBy { it.id }
+                }
+                .onFailure {
+                    newsError = YouTube.friendlyError(it)
+                }
+            newsLoading = false
+        }
+    }
+
+    val musicVideos by remember {
+        derivedStateOf { MusicFeedFilter.filterMusicVideos(lib.home.videos) }
+    }
+    val musicCollections by remember {
+        derivedStateOf { MusicFeedFilter.filterMusicCollections(lib.home.collections) }
+    }
+    var musicAutoPages by remember(lib.home.generation) { mutableIntStateOf(0) }
+    LaunchedEffect(isTv, signedIn, selectedChip, lib.home.videos.size, lib.home.loading, lib.home.hasMore) {
+        if (isTv && signedIn && selectedChip == TvHomeChip.Music &&
+            lib.home.videos.isNotEmpty() && musicVideos.isEmpty() && musicCollections.isEmpty() &&
+            lib.home.hasMore && !lib.home.loading && musicAutoPages < 2
+        ) {
+            musicAutoPages++
+            lib.home.loadMore()
+        }
+    }
+
     CollapsingHeaderLayout(
-        resetKey = scrollToTop to lib.home.generation,
+        resetKey = listOf(scrollToTop, lib.home.generation, selectedChip),
         header = {
-            ScreenHeader(title = "iTube TV", brandMark = true, route = "tab:Home") {
-                if (isTv && signedIn) CircleAction(Icons.Rounded.Refresh, "Refresh") { lib.home.refresh() }
-                UpdateAction()
-                AccountAction(onAccount)
+            Column {
+                ScreenHeader(title = "iTube TV", brandMark = true, route = "tab:Home") {
+                    if (isTv && signedIn) CircleAction(Icons.Rounded.Refresh, "Refresh") {
+                        if (selectedChip == TvHomeChip.News) newsReloadKey++
+                        else lib.home.refresh()
+                    }
+                    UpdateAction()
+                    AccountAction(onAccount)
+                }
+                if (isTv && signedIn) {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                    ) {
+                        itemsIndexed(TvHomeChip.entries, key = { _, chip -> "tv-home-chip-${chip.name}" }) { idx, chip ->
+                            YouTubeTvFilterChip(
+                                label = chip.label,
+                                selected = selectedChip == chip,
+                                modifier = Modifier.tvContentEntry("tab:Home", priority = 10 + idx),
+                            ) {
+                                selectedChip = chip
+                            }
+                        }
+                    }
+                }
             }
         },
     ) { top ->
-        if (signedIn) {
-            FeedList(
-                lib.home,
-                contentPadding.withTop(top),
-                onOpen,
-                videoBatchSizes = if (isTv) listOf(homeGridCols * 2) else listOf(3, 4),
-                afterVideoBatch = { list, batch ->
-                    list.item(key = "homeShorts-$batch") {
-                        HomeShortsShelf(shorts.items, batch, onOpenShort)
-                    }
-                    if (batch == 0 && lib.home.collections.isNotEmpty()) {
-                        list.item(key = "homeMixesAndPlaylists") {
-                            HomeCollectionsShelf(lib.home.collections, onPlayCollection)
-                        }
-                    }
-                },
-                scrollToTop = scrollToTop,
-                indicatorTop = top,
-                entryRoute = "tab:Home",
-            )
-        } else {
+        if (!signedIn) {
             LazyColumn(contentPadding = contentPadding.withTop(top)) {
                 item {
                     EmptyState(
@@ -198,22 +294,464 @@ fun HomeScreen(
                     )
                 }
             }
+        } else if (isTv && selectedChip != TvHomeChip.All) {
+            when (selectedChip) {
+                TvHomeChip.Music -> {
+                    val list = rememberScrollToTop(scrollToTop)
+                    LazyColumn(state = list, contentPadding = contentPadding.withTop(top)) {
+                        if (musicCollections.isNotEmpty()) {
+                            item(key = "tv-chip-music-collections") {
+                                HomeCollectionsShelf(musicCollections, onPlayCollection)
+                            }
+                        }
+                        if (musicVideos.isNotEmpty()) {
+                            item(key = "tv-chip-music-title") { SectionTitle("Music videos") }
+                            val rows = musicVideos.chunked(homeGridCols)
+                            itemsIndexed(rows, key = { _, r -> "tv-chip-music-${r.first().id}" }) { rowIdx, row ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    row.forEachIndexed { colIdx, video ->
+                                        val flatIdx = rowIdx * homeGridCols + colIdx
+                                        Box(Modifier.weight(1f)) {
+                                            VideoCard(
+                                                video,
+                                                onClick = { onOpen(video) },
+                                                modifier = if (flatIdx < 6) Modifier.tvContentEntry("tab:Home", priority = flatIdx) else Modifier,
+                                            )
+                                        }
+                                    }
+                                    repeat(homeGridCols - row.size) { Spacer(Modifier.weight(1f)) }
+                                }
+                            }
+                        } else if (lib.home.loading) {
+                            item { HomeScreenSkeleton() }
+                        } else {
+                            item {
+                                EmptyState(
+                                    icon = Icons.Rounded.Refresh,
+                                    title = "No music videos found yet",
+                                    body = "Refresh your feed or return to All recommendations.",
+                                    action = {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                            PillButton(
+                                                "Refresh",
+                                                { lib.home.refresh() },
+                                                modifier = Modifier.tvContentEntry("tab:Home", centeredEmptyState = true, priority = 0),
+                                            )
+                                            PillButton("Show all", { selectedChip = TvHomeChip.All })
+                                        }
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+                TvHomeChip.News -> {
+                    val list = rememberScrollToTop(scrollToTop)
+                    LazyColumn(state = list, contentPadding = contentPadding.withTop(top)) {
+                        when {
+                            newsLoading && newsVideos.isEmpty() -> item { HomeScreenSkeleton() }
+                            newsError != null && newsVideos.isEmpty() -> item {
+                                EmptyState(
+                                    icon = Icons.Rounded.CloudOff,
+                                    title = "Couldn't load News",
+                                    body = newsError.orEmpty(),
+                                    action = {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                            PillButton(
+                                                "Try again",
+                                                { newsReloadKey++ },
+                                                modifier = Modifier.tvContentEntry("tab:Home", centeredEmptyState = true, priority = 0),
+                                            )
+                                            PillButton("Show all", { selectedChip = TvHomeChip.All })
+                                        }
+                                    },
+                                )
+                            }
+                            newsVideos.isEmpty() -> item {
+                                EmptyState(
+                                    icon = Icons.Rounded.Refresh,
+                                    title = "No news videos right now",
+                                    body = "Try refreshing or switch back to All recommendations.",
+                                    action = {
+                                        PillButton(
+                                            "Show all",
+                                            { selectedChip = TvHomeChip.All },
+                                            modifier = Modifier.tvContentEntry("tab:Home", centeredEmptyState = true, priority = 0),
+                                        )
+                                    },
+                                )
+                            }
+                            else -> {
+                                item(key = "tv-chip-news-title") { SectionTitle("Top news") }
+                                val rows = newsVideos.chunked(homeGridCols)
+                                itemsIndexed(rows, key = { _, r -> "tv-chip-news-${r.first().id}" }) { rowIdx, row ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        row.forEachIndexed { colIdx, video ->
+                                            val flatIdx = rowIdx * homeGridCols + colIdx
+                                            Box(Modifier.weight(1f)) {
+                                                VideoCard(
+                                                    video,
+                                                    onClick = { onOpen(video) },
+                                                    modifier = if (flatIdx < 6) Modifier.tvContentEntry("tab:Home", priority = flatIdx) else Modifier,
+                                                )
+                                            }
+                                        }
+                                        repeat(homeGridCols - row.size) { Spacer(Modifier.weight(1f)) }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                TvHomeChip.Shorts -> {
+                    val list = rememberScrollToTop(scrollToTop)
+                    val shortCols = tvGridColumns(screenWidth, 160.dp, 5)
+                    LazyColumn(state = list, contentPadding = contentPadding.withTop(top)) {
+                        if (shorts.items.isEmpty()) {
+                            item {
+                                EmptyState(
+                                    icon = Icons.Rounded.Refresh,
+                                    title = "No Shorts loaded yet",
+                                    body = "Try again or return to All recommendations.",
+                                    action = {
+                                        PillButton(
+                                            "Show all",
+                                            { selectedChip = TvHomeChip.All },
+                                            modifier = Modifier.tvContentEntry("tab:Home", centeredEmptyState = true, priority = 0),
+                                        )
+                                    },
+                                )
+                            }
+                        } else {
+                            item(key = "tv-chip-shorts-title") { SectionTitle("Shorts") }
+                            val rows = shorts.items.chunked(shortCols)
+                            itemsIndexed(rows, key = { _, r -> "tv-chip-shorts-${r.first().id}" }) { rowIdx, row ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                ) {
+                                    row.forEachIndexed { colIdx, short ->
+                                        val flatIdx = rowIdx * shortCols + colIdx
+                                        Box(Modifier.weight(1f)) {
+                                            TvShortCard(
+                                                short = short,
+                                                modifier = Modifier.fillMaxWidth().then(
+                                                    if (flatIdx < 5) Modifier.tvContentEntry("tab:Home", priority = flatIdx) else Modifier
+                                                ),
+                                                onClick = { onOpenShort(short) },
+                                            )
+                                        }
+                                    }
+                                    repeat(shortCols - row.size) { Spacer(Modifier.weight(1f)) }
+                                }
+                            }
+                        }
+                    }
+                }
+                TvHomeChip.Mixes -> {
+                    val list = rememberScrollToTop(scrollToTop)
+                    val colCols = tvGridColumns(screenWidth, 230.dp, 4)
+                    LazyColumn(state = list, contentPadding = contentPadding.withTop(top)) {
+                        if (lib.home.collections.isEmpty()) {
+                            item {
+                                EmptyState(
+                                    icon = Icons.Rounded.Refresh,
+                                    title = "No mixes or playlists yet",
+                                    body = "Refresh your feed or switch back to All recommendations.",
+                                    action = {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                            PillButton(
+                                                "Refresh",
+                                                { lib.home.refresh() },
+                                                modifier = Modifier.tvContentEntry("tab:Home", centeredEmptyState = true, priority = 0),
+                                            )
+                                            PillButton("Show all", { selectedChip = TvHomeChip.All })
+                                        }
+                                    },
+                                )
+                            }
+                        } else {
+                            item(key = "tv-chip-mixes-title") { SectionTitle("Mixes & playlists") }
+                            val rows = lib.home.collections.chunked(colCols)
+                            itemsIndexed(rows, key = { _, r -> "tv-chip-mix-${r.first().url}" }) { rowIdx, row ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                ) {
+                                    row.forEachIndexed { colIdx, collection ->
+                                        val flatIdx = rowIdx * colCols + colIdx
+                                        Box(Modifier.weight(1f)) {
+                                            TvCollectionCard(
+                                                collection = collection,
+                                                modifier = Modifier.fillMaxWidth().then(
+                                                    if (flatIdx < 4) Modifier.tvContentEntry("tab:Home", priority = flatIdx) else Modifier
+                                                ),
+                                                onClick = { onPlayCollection(collection) },
+                                            )
+                                        }
+                                    }
+                                    repeat(colCols - row.size) { Spacer(Modifier.weight(1f)) }
+                                }
+                            }
+                        }
+                    }
+                }
+                TvHomeChip.All -> Unit
+            }
+        } else if (isTv) {
+            val showTvShelves = lib.home.videos.size > 6
+            val recommended = if (showTvShelves) lib.home.videos.take(6) else emptyList()
+            val gridVideos = if (showTvShelves) lib.home.videos.drop(6) else lib.home.videos
+            FeedList(
+                feed = lib.home,
+                contentPadding = contentPadding.withTop(top),
+                onOpen = onOpen,
+                videosOverride = if (showTvShelves) gridVideos else null,
+                header = {
+                    if (showTvShelves) {
+                        item(key = "tv-recommended-title") { SectionTitle("Recommended") }
+                        item(key = "tv-recommended-shelf") {
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                itemsIndexed(recommended, key = { _, v -> "tv-rec-${v.id}" }) { idx, video ->
+                                    VideoCard(
+                                        video = video,
+                                        onClick = { onOpen(video) },
+                                        modifier = Modifier
+                                            .width(292.dp)
+                                            .tvContentEntry("tab:Home", priority = idx),
+                                    )
+                                }
+                            }
+                        }
+                        if (shorts.items.isNotEmpty()) {
+                            item(key = "tv-home-shorts") {
+                                HomeShortsShelf(shorts.items, 0, onOpenShort)
+                            }
+                        }
+                        if (lib.home.collections.isNotEmpty()) {
+                            item(key = "tv-home-mixes") {
+                                HomeCollectionsShelf(lib.home.collections, onPlayCollection)
+                            }
+                        }
+                        if (gridVideos.isNotEmpty()) {
+                            item(key = "tv-more-videos-title") { SectionTitle("More videos") }
+                        }
+                    }
+                },
+                scrollToTop = scrollToTop,
+                indicatorTop = top,
+                entryRoute = if (showTvShelves) null else "tab:Home",
+            )
+        } else {
+            FeedList(
+                lib.home,
+                contentPadding.withTop(top),
+                onOpen,
+                videoBatchSizes = listOf(3, 4),
+                afterVideoBatch = { list, batch ->
+                    list.item(key = "homeShorts-$batch") {
+                        HomeShortsShelf(shorts.items, batch, onOpenShort)
+                    }
+                    if (batch == 0 && lib.home.collections.isNotEmpty()) {
+                        list.item(key = "homeMixesAndPlaylists") {
+                            HomeCollectionsShelf(lib.home.collections, onPlayCollection)
+                        }
+                    }
+                },
+                scrollToTop = scrollToTop,
+                indicatorTop = top,
+                entryRoute = "tab:Home",
+            )
         }
+    }
+}
+
+@Composable
+private fun TvShortCard(
+    short: VideoItem,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val menu = LocalVideoMenu.current
+    var focused by remember { mutableStateOf(false) }
+    val cardShape = RoundedCornerShape(12.dp)
+    Box(
+        modifier
+            .aspectRatio(9f / 16f)
+            .prefetchOnPress(short.id)
+            .onFocusChanged { focused = it.hasFocus || it.isFocused }
+            .pressable(
+                pressedScale = 0.98f,
+                focusScale = 1.04f,
+                showFocusBorder = false,
+                onLongClick = { menu(short) },
+                onClick = onClick,
+            )
+            .clip(cardShape)
+            .drawWithContent {
+                drawContent()
+                if (focused) {
+                    val outline = cardShape.createOutline(size, layoutDirection, this)
+                    drawOutline(outline, Color.Black.copy(alpha = 0.78f), style = Stroke(4.2.dp.toPx()))
+                    drawOutline(outline, Color.White, style = Stroke(2.6.dp.toPx()))
+                }
+            },
+    ) {
+        Thumbnail(
+            url = short.shortThumbnail,
+            modifier = Modifier.fillMaxSize(),
+            radius = 0,
+            fallbackUrl = short.thumbnail,
+        )
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.verticalGradient(0.45f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.84f)),
+            ),
+        )
+        Text(
+            short.title,
+            color = Color.White,
+            fontSize = 14.sp,
+            lineHeight = 18.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.align(Alignment.BottomStart).padding(horizontal = 10.dp, vertical = 10.dp),
+        )
+    }
+}
+
+@Composable
+private fun TvCollectionCard(
+    collection: PublicCollection,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val c = MaterialTheme.colorScheme
+    val isMix = collection.subtitle.contains("mix", ignoreCase = true) ||
+        collection.url.substringAfter("list=", "").startsWith("RD")
+    var focused by remember { mutableStateOf(false) }
+    val thumbShape = RoundedCornerShape(12.dp)
+    Column(
+        modifier = modifier
+            .onFocusChanged { focused = it.hasFocus || it.isFocused }
+            .pressable(
+                pressedScale = 0.98f,
+                focusScale = 1.03f,
+                showFocusBorder = false,
+                onClick = onClick,
+            ),
+    ) {
+        Box(
+            Modifier
+                .align(Alignment.CenterHorizontally)
+                .fillMaxWidth(0.88f)
+                .height(4.dp)
+                .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
+                .background(if (focused) Color.White.copy(alpha = 0.72f) else Color(0xFF3A3A3A)),
+        )
+        Spacer(Modifier.height(2.dp))
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .clip(thumbShape)
+                .drawWithContent {
+                    drawContent()
+                    if (focused) {
+                        val outline = thumbShape.createOutline(size, layoutDirection, this)
+                        drawOutline(outline, Color.Black.copy(alpha = 0.78f), style = Stroke(4.2.dp.toPx()))
+                        drawOutline(outline, Color.White, style = Stroke(2.6.dp.toPx()))
+                    }
+                },
+        ) {
+            Thumbnail(collection.thumbnail, Modifier.fillMaxSize(), radius = 0)
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.3f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.78f))))
+            Text(
+                if (isMix) "MIX" else "PLAYLIST",
+                Modifier.align(Alignment.TopStart).padding(8.dp).clip(RoundedCornerShape(4.dp))
+                    .background(Color.Black.copy(alpha = 0.78f)).padding(horizontal = 7.dp, vertical = 3.dp),
+                color = Color.White,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.5.sp,
+            )
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(8.dp)
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(if (focused) Color.White else Color.Black.copy(alpha = 0.72f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Rounded.PlayArrow,
+                    "Play ${collection.title}",
+                    tint = if (focused) Color(0xFF0F0F0F) else Color.White,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+        Text(
+            collection.title,
+            Modifier.padding(top = 8.dp),
+            color = if (focused) Color.White else c.onSurface,
+            fontSize = 14.5.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            if (isMix) "Play mix · all tracks" else "Play playlist · all videos",
+            color = c.onSurfaceVariant,
+            fontSize = 12.5.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
 /** A compact real Shorts rail, sourced from the same InnerTube feed as the Shorts tab. */
 @Composable
 private fun HomeShortsShelf(shorts: List<VideoItem>, shelfIndex: Int, onOpenShort: (VideoItem) -> Unit) {
-    val shelfShorts = shorts.drop(shelfIndex * 4).take(4)
+    val isTv = LocalIsTv.current
+    val shelfShorts = if (isTv) shorts.drop(shelfIndex * 8).take(10) else shorts.drop(shelfIndex * 4).take(4)
     if (shelfShorts.isEmpty()) return
     val menu = LocalVideoMenu.current
-    val isTv = LocalIsTv.current
     val cardShape = RoundedCornerShape(16.dp)
-    Column(Modifier.padding(top = 4.dp, bottom = 6.dp)) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("i", color = Color(0xFFFF0000), fontSize = 21.sp, fontWeight = FontWeight.ExtraBold)
-            Text("Shorts", fontSize = 21.sp, fontWeight = FontWeight.ExtraBold)
+    Column(Modifier.padding(top = 6.dp, bottom = 8.dp)) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (isTv) {
+                Box(
+                    Modifier.size(22.dp).clip(RoundedCornerShape(6.dp)).background(Color(0xFFFF0000)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Rounded.PlayArrow, null, tint = Color.White, modifier = Modifier.size(14.dp))
+                }
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "Shorts",
+                    fontFamily = FontFamily.SansSerif,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            } else {
+                Text("i", color = Color(0xFFFF0000), fontSize = 21.sp, fontWeight = FontWeight.ExtraBold)
+                Text("Shorts", fontSize = 21.sp, fontWeight = FontWeight.ExtraBold)
+            }
         }
         if (isTv) {
             LazyRow(
@@ -221,42 +759,11 @@ private fun HomeShortsShelf(shorts: List<VideoItem>, shelfIndex: Int, onOpenShor
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 items(shelfShorts, key = { "home-short-${it.id}" }) { short ->
-                    val idx = shelfShorts.indexOf(short)
-                    Box(
-                        Modifier.width(154.dp)
-                            .aspectRatio(9f / 16f)
-                            .prefetchOnPress(short.id)
-                            .pressable(pressedScale = 0.98f, focusScale = 1.03f, focusShape = cardShape, onLongClick = { menu(short) }, onClick = { onOpenShort(short) })
-                            .clip(cardShape),
-                    ) {
-                        Thumbnail(
-                            url = short.shortThumbnail,
-                            modifier = Modifier.fillMaxSize(),
-                            radius = 0,
-                            fallbackUrl = short.thumbnail,
-                        )
-                        Box(
-                            Modifier.fillMaxSize().background(
-                                Brush.verticalGradient(0.42f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.78f)),
-                            ),
-                        )
-                        if (idx < 2) {
-                            Box(
-                                Modifier.align(Alignment.TopStart).padding(8.dp).clip(RoundedCornerShape(6.dp))
-                                    .background(Color.White).padding(horizontal = 8.dp, vertical = 3.dp),
-                            ) { Text("New", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
-                        }
-                        Text(
-                            short.title,
-                            color = Color.White,
-                            fontSize = 14.sp,
-                            lineHeight = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.align(Alignment.BottomStart).padding(horizontal = 10.dp, vertical = 11.dp),
-                        )
-                    }
+                    TvShortCard(
+                        short = short,
+                        modifier = Modifier.width(156.dp),
+                        onClick = { onOpenShort(short) },
+                    )
                 }
             }
         } else {
@@ -320,33 +827,42 @@ private fun HomeShortsShelf(shorts: List<VideoItem>, shelfIndex: Int, onOpenShor
 private fun HomeCollectionsShelf(collections: List<PublicCollection>, onPlay: (PublicCollection) -> Unit) {
     if (collections.isEmpty()) return
     val c = MaterialTheme.colorScheme
+    val isTv = LocalIsTv.current
     Column(Modifier.padding(top = 4.dp, bottom = 10.dp)) {
         SectionTitle("Mixes & playlists")
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(if (isTv) 14.dp else 12.dp),
         ) {
             items(collections, key = { "home-collection-${it.url}" }) { collection ->
-                val isMix = collection.subtitle.contains("mix", ignoreCase = true) ||
-                    collection.url.substringAfter("list=", "").startsWith("RD")
-                Column(Modifier.width(190.dp).pressable(pressedScale = 0.98f, focusScale = 1.03f, focusShape = RoundedCornerShape(18.dp), onClick = { onPlay(collection) })) {
-                    Box(Modifier.fillMaxWidth().height(120.dp).clip(RoundedCornerShape(18.dp))) {
-                        Thumbnail(collection.thumbnail, Modifier.fillMaxSize(), radius = 0)
-                        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.25f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.78f))))
-                        Text(
-                            if (isMix) "MIX" else "PLAYLIST",
-                            Modifier.align(Alignment.TopStart).padding(9.dp).clip(CircleShape)
-                                .background(Color.Black.copy(alpha = 0.58f)).padding(horizontal = 9.dp, vertical = 4.dp),
-                            color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold,
-                        )
-                        Icon(Icons.Rounded.PlayArrow, "Play ${collection.title}", tint = Color.White,
-                            modifier = Modifier.align(Alignment.BottomEnd).padding(9.dp).size(30.dp)
-                                .clip(CircleShape).background(c.primary).padding(5.dp))
+                if (isTv) {
+                    TvCollectionCard(
+                        collection = collection,
+                        modifier = Modifier.width(248.dp),
+                        onClick = { onPlay(collection) },
+                    )
+                } else {
+                    val isMix = collection.subtitle.contains("mix", ignoreCase = true) ||
+                        collection.url.substringAfter("list=", "").startsWith("RD")
+                    Column(Modifier.width(190.dp).pressable(pressedScale = 0.98f, focusScale = 1.03f, focusShape = RoundedCornerShape(18.dp), onClick = { onPlay(collection) })) {
+                        Box(Modifier.fillMaxWidth().height(120.dp).clip(RoundedCornerShape(18.dp))) {
+                            Thumbnail(collection.thumbnail, Modifier.fillMaxSize(), radius = 0)
+                            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.25f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.78f))))
+                            Text(
+                                if (isMix) "MIX" else "PLAYLIST",
+                                Modifier.align(Alignment.TopStart).padding(9.dp).clip(CircleShape)
+                                    .background(Color.Black.copy(alpha = 0.58f)).padding(horizontal = 9.dp, vertical = 4.dp),
+                                color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold,
+                            )
+                            Icon(Icons.Rounded.PlayArrow, "Play ${collection.title}", tint = Color.White,
+                                modifier = Modifier.align(Alignment.BottomEnd).padding(9.dp).size(30.dp)
+                                    .clip(CircleShape).background(c.primary).padding(5.dp))
+                        }
+                        Text(collection.title, Modifier.padding(top = 7.dp), color = c.onSurface, fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(if (isMix) "Play mix · all tracks" else "Play playlist · all videos", color = c.onSurfaceVariant,
+                            fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    Text(collection.title, Modifier.padding(top = 7.dp), color = c.onSurface, fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Text(if (isMix) "Play mix · all tracks" else "Play playlist · all videos", color = c.onSurfaceVariant,
-                        fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
@@ -504,18 +1020,27 @@ fun LibraryScreen(
                     ) {
                         Text(
                             "History",
-                            fontFamily = RoundedHeavy,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 19.sp,
-                            letterSpacing = (-0.5).sp,
+                            fontFamily = if (isTv) FontFamily.SansSerif else RoundedHeavy,
+                            fontWeight = if (isTv) FontWeight.Bold else FontWeight.ExtraBold,
+                            fontSize = if (isTv) 18.sp else 19.sp,
+                            letterSpacing = if (isTv) (-0.2).sp else (-0.5).sp,
                         )
-                        Text(
-                            "View all",
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            modifier = Modifier.tvContentEntry("tab:Library", priority = 0).pressable(focusShape = CircleShape, onClick = onOpenHistory).padding(horizontal = 8.dp, vertical = 4.dp),
-                        )
+                        if (isTv) {
+                            YouTubeTvFilterChip(
+                                label = "View all",
+                                selected = false,
+                                modifier = Modifier.tvContentEntry("tab:Library", priority = 0),
+                                onClick = onOpenHistory,
+                            )
+                        } else {
+                            Text(
+                                "View all",
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                modifier = Modifier.tvContentEntry("tab:Library", priority = 0).pressable(focusShape = CircleShape, onClick = onOpenHistory).padding(horizontal = 8.dp, vertical = 4.dp),
+                            )
+                        }
                     }
                 }
                 item(key = "history") {
@@ -523,7 +1048,7 @@ fun LibraryScreen(
                     when {
                         history.isNotEmpty() -> LazyRow(
                             contentPadding = PaddingValues(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(if (isTv) 14.dp else 10.dp),
                         ) {
                             items(history.take(20), key = { "h-" + it.id }) { video ->
                                 HistoryCard(video) {
@@ -589,6 +1114,54 @@ fun LibraryScreen(
 @Composable
 private fun HistoryCard(video: VideoItem, onClick: () -> Unit) {
     val menu = LocalVideoMenu.current
+    val isTv = LocalIsTv.current
+    if (isTv) {
+        var focused by remember { mutableStateOf(false) }
+        val thumbShape = RoundedCornerShape(12.dp)
+        Column(
+            Modifier
+                .width(220.dp)
+                .prefetchOnPress(video.id)
+                .onFocusChanged { focused = it.hasFocus || it.isFocused }
+                .pressable(
+                    pressedScale = 0.97f,
+                    focusScale = 1.03f,
+                    showFocusBorder = false,
+                    onLongClick = { menu(video) },
+                    onClick = onClick,
+                ),
+        ) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(16f / 9f)
+                    .clip(thumbShape)
+                    .drawWithContent {
+                        drawContent()
+                        if (focused) {
+                            val outline = thumbShape.createOutline(size, layoutDirection, this)
+                            drawOutline(outline, Color.Black.copy(alpha = 0.78f), style = Stroke(4.2.dp.toPx()))
+                            drawOutline(outline, Color.White, style = Stroke(2.6.dp.toPx()))
+                        }
+                    },
+            ) {
+                Thumbnail(video.thumbnail, Modifier.fillMaxSize(), radius = 0)
+                DurationPill(video.durationSec, Modifier.align(Alignment.BottomEnd).padding(6.dp), small = true)
+                ResumeBar(video.id, Modifier.align(Alignment.BottomStart))
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                video.title,
+                color = if (focused) Color.White else MaterialTheme.colorScheme.onSurface,
+                fontSize = 13.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                lineHeight = 17.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        return
+    }
     Column(Modifier.width(168.dp).prefetchOnPress(video.id).pressable(pressedScale = 0.97f, focusScale = 1.03f, focusShape = RoundedCornerShape(20.dp), onLongClick = { menu(video) }, onClick = onClick)) {
         Box {
             Thumbnail(video.thumbnail, Modifier.fillMaxWidth().aspectRatio(16f / 9f), radius = 20)
@@ -602,15 +1175,62 @@ private fun HistoryCard(video: VideoItem, onClick: () -> Unit) {
 @Composable
 private fun PlaylistTile(playlist: PlaylistRef, modifier: Modifier, onClick: () -> Unit) {
     val c = MaterialTheme.colorScheme
+    val isTv = LocalIsTv.current
     val openOptions = LocalPlaylistMenu.current
     val canManage = playlist.id !in setOf("WL", "LL", "DL")
-    val shape = RoundedCornerShape(26.dp)
     val (icon, tone) = when (playlist.id) {
         "WL" -> Icons.Rounded.WatchLater to c.primaryContainer
         "LL" -> Icons.Rounded.ThumbUp to c.tertiaryContainer
         "DL" -> Icons.Rounded.Download to c.primaryContainer
         else -> Icons.AutoMirrored.Rounded.PlaylistPlay to c.secondaryContainer
     }
+    if (isTv) {
+        var focused by remember { mutableStateOf(false) }
+        val tvShape = RoundedCornerShape(12.dp)
+        Column(
+            modifier = modifier
+                .height(128.dp)
+                .onFocusChanged { focused = it.hasFocus || it.isFocused }
+                .pressable(
+                    pressedScale = 0.97f,
+                    focusScale = 1.03f,
+                    showFocusBorder = false,
+                    onLongClick = { if (canManage) openOptions(playlist) },
+                    onClick = onClick,
+                )
+                .clip(tvShape)
+                .background(if (focused) Color(0xFF282828) else Color(0xFF181818))
+                .border(if (focused) 2.dp else 1.dp, if (focused) Color.White else Color(0xFF2A2A2A), tvShape)
+                .padding(14.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
+        ) {
+            if (playlist.thumbnail != null) {
+                Thumbnail(playlist.thumbnail, Modifier.size(width = 76.dp, height = 44.dp), radius = 8)
+            } else {
+                Box(
+                    Modifier.size(44.dp).clip(CircleShape).background(if (focused) Color.White else Color(0xFF282828)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(icon, null, tint = if (focused) Color(0xFF0F0F0F) else Color.White, modifier = Modifier.size(22.dp))
+                }
+            }
+            Column {
+                Text(
+                    playlist.title,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.5.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                playlist.subtitle?.let {
+                    Text(it, color = c.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                }
+            }
+        }
+        return
+    }
+    val shape = RoundedCornerShape(26.dp)
     Column(
         modifier = modifier
             .height(132.dp)
@@ -1500,6 +2120,8 @@ fun SearchScreen(
     val view = LocalView.current
     val bridge = LocalTvFocusBridge.current
     val isTv = LocalIsTv.current
+    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    val searchCols = if (isTv) tvGridColumns(screenWidth, 280.dp, 3) else 1
     // Search and Enter both dismiss the keyboard — every field, every time. A hide issued
     // while the key event is still being dispatched can be undone by the IME, so the
     // window-level hide is posted to run after it.
@@ -1548,18 +2170,23 @@ fun SearchScreen(
         ) {
             CircleAction(Icons.Rounded.Tune, "Search filters") { filtersOpen = true }
         }
+        val barShape = if (isTv) RoundedCornerShape(10.dp) else CircleShape
         Row(
             modifier = Modifier
                 .padding(horizontal = 16.dp)
                 .fillMaxWidth()
-                .height(60.dp)
-                .border(if (focused) 2.5.dp else 0.75.dp, if (focused) c.primary else c.outlineVariant.copy(alpha = 0.25f), CircleShape)
-                .clip(CircleShape)
-                .background(c.surfaceContainerHigh)
+                .height(if (isTv) 52.dp else 60.dp)
+                .border(
+                    width = if (focused) 2.2.dp else if (isTv) 1.dp else 0.75.dp,
+                    color = if (focused && isTv) Color.White else if (focused) c.primary else if (isTv) Color(0xFF383838) else c.outlineVariant.copy(alpha = 0.25f),
+                    shape = barShape,
+                )
+                .clip(barShape)
+                .background(if (isTv) Color(0xFF212121) else c.surfaceContainerHigh)
                 .padding(start = 20.dp, end = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(Icons.Rounded.Search, null, tint = c.onSurfaceVariant)
+            Icon(Icons.Rounded.Search, null, tint = if (isTv && focused) Color.White else c.onSurfaceVariant)
             Spacer(Modifier.width(12.dp))
             Box(Modifier.weight(1f)) {
                 if (state.query.isEmpty()) {
@@ -1567,7 +2194,7 @@ fun SearchScreen(
                         "Search iTube TV",
                         color = c.onSurfaceVariant,
                         fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = if (isTv) FontWeight.Medium else FontWeight.SemiBold
                     )
                 }
                 BasicTextField(
@@ -1575,7 +2202,7 @@ fun SearchScreen(
                     onValueChange = state::updateQuery,
                     singleLine = true,
                     textStyle = OwnDirectionText.merge(TextStyle(color = c.onSurface, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)),
-                    cursorBrush = SolidColor(c.primary),
+                    cursorBrush = SolidColor(if (isTv) Color.White else c.primary),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = { submit() }, onDone = { submit() }),
                     // Hardware Enter doesn't go through the IME action; treat it the same.
@@ -1599,7 +2226,24 @@ fun SearchScreen(
                 ) { Icon(Icons.Rounded.Close, "Clear", tint = c.onSurfaceVariant) }
             }
         }
-        Spacer(Modifier.height(8.dp))
+        if (isTv) {
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                items(SearchFilter.entries, key = { "tv-search-filter-${it.name}" }) { filter ->
+                    YouTubeTvFilterChip(
+                        label = filter.label,
+                        selected = state.filter == filter,
+                    ) {
+                        state.selectFilter(filter)
+                    }
+                }
+            }
+        } else {
+            Spacer(Modifier.height(8.dp))
+        }
         } },
     ) { top ->
         Box(Modifier.fillMaxSize()) {
@@ -1648,16 +2292,16 @@ fun SearchScreen(
                         LaunchedEffect(state.generation) { list.scrollToItem(0) }
                         val displayItems = remember(state.results) { groupSearchResults(state.results) }
                         if (isTv) {
-                            val rows = remember(displayItems) {
+                            val rows = remember(displayItems, searchCols) {
                                 buildList<List<SearchDisplayItem>> {
-                                    val buf = ArrayList<SearchDisplayItem>(2)
+                                    val buf = ArrayList<SearchDisplayItem>(searchCols)
                                     for (d in displayItems) {
                                         if (d is SearchDisplayItem.ShortsShelf) {
                                             if (buf.isNotEmpty()) { add(buf.toList()); buf.clear() }
                                             add(listOf(d))
                                         } else {
                                             buf.add(d)
-                                            if (buf.size == 2) { add(buf.toList()); buf.clear() }
+                                            if (buf.size == searchCols) { add(buf.toList()); buf.clear() }
                                         }
                                     }
                                     if (buf.isNotEmpty()) add(buf.toList())
@@ -1683,7 +2327,7 @@ fun SearchScreen(
                                         ) {
                                             row.forEachIndexed { colIdx, cell ->
                                                 if (cell is SearchDisplayItem.Normal) {
-                                                    val flatIdx = rowIdx * 2 + colIdx
+                                                    val flatIdx = rowIdx * searchCols + colIdx
                                                     Box(Modifier.weight(1f)) {
                                                         SearchResultCard(
                                                             cell.result,
@@ -1695,7 +2339,7 @@ fun SearchScreen(
                                                     }
                                                 }
                                             }
-                                            if (row.size == 1) Spacer(Modifier.weight(1f))
+                                            repeat(searchCols - row.size) { Spacer(Modifier.weight(1f)) }
                                         }
                                     }
                                 }
@@ -1785,16 +2429,30 @@ private fun SearchResultCard(
         return
     }
     val c = MaterialTheme.colorScheme
-    val cardShape = RoundedCornerShape(20.dp)
+    val isTv = LocalIsTv.current
+    val cardShape = if (isTv) RoundedCornerShape(12.dp) else RoundedCornerShape(20.dp)
+    var cardFocused by remember { mutableStateOf(false) }
+    val cardBg = if (isTv && cardFocused) Color(0xFF282828) else if (isTv) Color(0xFF181818) else c.surfaceContainerLow
+    val tvCardModifier = if (isTv) {
+        Modifier
+            .onFocusChanged { cardFocused = it.hasFocus || it.isFocused }
+            .pressable(focusScale = 1.02f, focusShape = cardShape, showFocusBorder = false) { onOpenResult(result) }
+            .clip(cardShape)
+            .background(cardBg)
+            .border(if (cardFocused) 2.dp else 1.dp, if (cardFocused) Color.White else Color(0xFF2A2A2A), cardShape)
+    } else {
+        Modifier
+            .pressable(focusScale = 1.02f, focusShape = cardShape) { onOpenResult(result) }
+            .clip(cardShape)
+            .background(cardBg)
+    }
     when (result.kind) {
         SearchResultKind.Channel -> {
             Row(
                 modifier = modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp)
-                    .pressable(focusScale = 1.02f, focusShape = cardShape) { onOpenResult(result) }
-                    .clip(cardShape)
-                    .background(c.surfaceContainerLow)
+                    .padding(horizontal = if (isTv) 8.dp else 16.dp, vertical = 6.dp)
+                    .then(tvCardModifier)
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -1813,7 +2471,7 @@ private fun SearchResultCard(
                         fontSize = 16.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        color = c.onSurface,
+                        color = if (isTv && cardFocused) Color.White else c.onSurface,
                     )
                     Spacer(Modifier.height(3.dp))
                     Text(
@@ -1827,13 +2485,13 @@ private fun SearchResultCard(
                 Spacer(Modifier.width(8.dp))
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(c.primaryContainer)
+                        .clip(RoundedCornerShape(if (isTv) 8.dp else 16.dp))
+                        .background(if (isTv && cardFocused) Color.White else if (isTv) Color(0xFF272727) else c.primaryContainer)
                         .padding(horizontal = 12.dp, vertical = 6.dp)
                 ) {
                     Text(
                         text = "View",
-                        color = c.onPrimaryContainer,
+                        color = if (isTv && cardFocused) Color(0xFF0F0F0F) else if (isTv) Color(0xFFF1F1F1) else c.onPrimaryContainer,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                     )
@@ -1844,25 +2502,23 @@ private fun SearchResultCard(
             Row(
                 modifier = modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp)
-                    .pressable(focusScale = 1.02f, focusShape = cardShape) { onOpenResult(result) }
-                    .clip(cardShape)
-                    .background(c.surfaceContainerLow)
+                    .padding(horizontal = if (isTv) 8.dp else 16.dp, vertical = 6.dp)
+                    .then(tvCardModifier)
                     .padding(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(
                     modifier = Modifier
                         .size(72.dp)
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(if (isTv) 8.dp else 14.dp))
                 ) {
                     Thumbnail(result.thumbnail, Modifier.fillMaxSize(), radius = 0)
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
                             .padding(4.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(Color.Black.copy(alpha = 0.75f))
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color.Black.copy(alpha = 0.78f))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(
@@ -1882,7 +2538,7 @@ private fun SearchResultCard(
                         fontSize = 15.sp,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
-                        color = c.onSurface,
+                        color = if (isTv && cardFocused) Color.White else c.onSurface,
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
@@ -1897,7 +2553,7 @@ private fun SearchResultCard(
                 Icon(
                     imageVector = Icons.Rounded.ArrowForward,
                     contentDescription = null,
-                    tint = c.onSurfaceVariant.copy(alpha = 0.6f),
+                    tint = if (isTv && cardFocused) Color.White else c.onSurfaceVariant.copy(alpha = 0.6f),
                     modifier = Modifier.size(18.dp),
                 )
             }
@@ -1906,14 +2562,12 @@ private fun SearchResultCard(
             Row(
                 modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp)
-                    .pressable(focusScale = 1.02f, focusShape = cardShape) { onOpenResult(result) }
-                    .clip(cardShape)
-                    .background(c.surfaceContainerLow)
+                    .padding(horizontal = if (isTv) 8.dp else 16.dp, vertical = 6.dp)
+                    .then(tvCardModifier)
                     .padding(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Thumbnail(result.thumbnail, Modifier.size(68.dp), radius = 16)
+                Thumbnail(result.thumbnail, Modifier.size(68.dp), radius = if (isTv) 8 else 16)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(result.title, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -1936,8 +2590,19 @@ fun SearchShortsShelf(shorts: List<VideoItem>, onOpenShort: (VideoItem) -> Unit)
             Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("i", color = Color(0xFFFF0000), fontSize = 21.sp, fontWeight = FontWeight.ExtraBold)
-            Text("Shorts", fontSize = 21.sp, fontWeight = FontWeight.ExtraBold)
+            if (isTv) {
+                Box(
+                    Modifier.size(22.dp).clip(RoundedCornerShape(6.dp)).background(Color(0xFFFF0000)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Rounded.PlayArrow, null, tint = Color.White, modifier = Modifier.size(14.dp))
+                }
+                Spacer(Modifier.width(8.dp))
+                Text("Shorts", fontFamily = FontFamily.SansSerif, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            } else {
+                Text("i", color = Color(0xFFFF0000), fontSize = 21.sp, fontWeight = FontWeight.ExtraBold)
+                Text("Shorts", fontSize = 21.sp, fontWeight = FontWeight.ExtraBold)
+            }
         }
         if (isTv) {
             LazyRow(
@@ -1945,35 +2610,11 @@ fun SearchShortsShelf(shorts: List<VideoItem>, onOpenShort: (VideoItem) -> Unit)
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 items(shorts, key = { "search-short-${it.id}" }) { short ->
-                    Box(
-                        Modifier.width(154.dp)
-                            .aspectRatio(9f / 16f)
-                            .prefetchOnPress(short.id)
-                            .pressable(pressedScale = 0.98f, focusScale = 1.03f, focusShape = cardShape, onLongClick = { menu(short) }, onClick = { onOpenShort(short) })
-                            .clip(cardShape),
-                    ) {
-                        Thumbnail(
-                            url = short.shortThumbnail,
-                            modifier = Modifier.fillMaxSize(),
-                            radius = 0,
-                            fallbackUrl = short.thumbnail,
-                        )
-                        Box(
-                            Modifier.fillMaxSize().background(
-                                Brush.verticalGradient(0.42f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.78f)),
-                            ),
-                        )
-                        Text(
-                            short.title,
-                            color = Color.White,
-                            fontSize = 14.sp,
-                            lineHeight = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.align(Alignment.BottomStart).padding(horizontal = 10.dp, vertical = 11.dp),
-                        )
-                    }
+                    TvShortCard(
+                        short = short,
+                        modifier = Modifier.width(154.dp),
+                        onClick = { onOpenShort(short) },
+                    )
                 }
             }
         } else {

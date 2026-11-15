@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.ClipData
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -61,10 +62,15 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -193,7 +199,10 @@ fun ChannelScreen(
             Spacer(Modifier.width(12.dp))
             Text(
                 state.details?.name.orEmpty(),
-                fontFamily = RoundedHeavy, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp, letterSpacing = (-0.6).sp,
+                fontFamily = if (isTv) FontFamily.SansSerif else RoundedHeavy,
+                fontWeight = if (isTv) FontWeight.Bold else FontWeight.ExtraBold,
+                fontSize = 22.sp,
+                letterSpacing = if (isTv) (-0.3).sp else (-0.6).sp,
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }
@@ -218,14 +227,21 @@ fun ChannelScreen(
                 item(key = "header") {
                     Column(Modifier.padding(horizontal = 16.dp)) {
                         if (d.banner != null) {
-                            Thumbnail(d.banner, Modifier.fillMaxWidth().aspectRatio(5.6f), radius = 22)
+                            Thumbnail(d.banner, Modifier.fillMaxWidth().aspectRatio(5.6f), radius = if (isTv) 12 else 22)
                             Spacer(Modifier.height(16.dp))
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             ChannelAvatar(d.avatar, d.name, size = 76)
                             Spacer(Modifier.width(14.dp))
                             Column(Modifier.weight(1f)) {
-                                Text(d.name, fontFamily = RoundedHeavy, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text(
+                                    d.name,
+                                    fontFamily = if (isTv) FontFamily.SansSerif else RoundedHeavy,
+                                    fontWeight = if (isTv) FontWeight.Bold else FontWeight.ExtraBold,
+                                    fontSize = 20.sp,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
                                 if (d.subscribers > 0) Text("${formatCount(d.subscribers)} subscribers", color = c.onSurfaceVariant, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                             }
                         }
@@ -252,22 +268,47 @@ fun ChannelScreen(
                             .fillMaxWidth()
                             .horizontalScroll(rememberScrollState())
                             .padding(horizontal = 16.dp, vertical = 14.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(if (isTv) 10.dp else 8.dp),
                     ) {
                         ChannelSection.entries.forEachIndexed { idx, tab ->
                             val active = section == tab
-                            Text(
-                                tab.label,
-                                color = if (active) c.onPrimary else c.onSurface,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp,
-                                modifier = Modifier
-                                    .then(if (idx == 0) Modifier.tvContentEntry("overlay:channel", priority = 0) else Modifier)
-                                    .pressable(focusShape = CircleShape, focusScale = 1.04f) { section = tab }
-                                    .clip(CircleShape)
-                                    .background(if (active) c.primary else c.surfaceContainerHigh)
-                                    .padding(horizontal = 16.dp, vertical = 9.dp),
-                            )
+                            if (isTv) {
+                                var tabFocused by remember { mutableStateOf(false) }
+                                val tabShape = RoundedCornerShape(8.dp)
+                                val bg = when {
+                                    tabFocused -> Color.White
+                                    active -> Color(0xFFF1F1F1)
+                                    else -> Color(0xFF272727)
+                                }
+                                val ink = if (tabFocused || active) Color(0xFF0F0F0F) else Color(0xFFF1F1F1)
+                                Text(
+                                    tab.label,
+                                    color = ink,
+                                    fontFamily = FontFamily.SansSerif,
+                                    fontWeight = if (tabFocused || active) FontWeight.Bold else FontWeight.Medium,
+                                    fontSize = 14.sp,
+                                    modifier = Modifier
+                                        .then(if (idx == 0) Modifier.tvContentEntry("overlay:channel", priority = 0) else Modifier)
+                                        .onFocusChanged { tabFocused = it.hasFocus || it.isFocused }
+                                        .pressable(focusShape = tabShape, focusScale = 1.04f, showFocusBorder = false) { section = tab }
+                                        .clip(tabShape)
+                                        .background(bg)
+                                        .padding(horizontal = 16.dp, vertical = 9.dp),
+                                )
+                            } else {
+                                Text(
+                                    tab.label,
+                                    color = if (active) c.onPrimary else c.onSurface,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    modifier = Modifier
+                                        .then(if (idx == 0) Modifier.tvContentEntry("overlay:channel", priority = 0) else Modifier)
+                                        .pressable(focusShape = CircleShape, focusScale = 1.04f) { section = tab }
+                                        .clip(CircleShape)
+                                        .background(if (active) c.primary else c.surfaceContainerHigh)
+                                        .padding(horizontal = 16.dp, vertical = 9.dp),
+                                )
+                            }
                         }
                     }
                 }
@@ -390,13 +431,31 @@ fun ChannelScreen(
 @Composable
 private fun ChannelShortCard(short: VideoItem, onClick: () -> Unit) {
     val menu = LocalVideoMenu.current
-    val shape = RoundedCornerShape(14.dp)
+    val isTv = LocalIsTv.current
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(if (isTv) 12.dp else 14.dp)
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(9f / 16f)
-            .pressable(pressedScale = 0.98f, focusScale = 1.03f, focusShape = shape, onLongClick = { menu(short) }, onClick = onClick)
+            .onFocusChanged { focused = it.hasFocus || it.isFocused }
+            .pressable(
+                pressedScale = 0.98f,
+                focusScale = 1.03f,
+                focusShape = shape,
+                showFocusBorder = !isTv,
+                onLongClick = { menu(short) },
+                onClick = onClick,
+            )
             .clip(shape)
+            .drawWithContent {
+                drawContent()
+                if (isTv && focused) {
+                    val outline = shape.createOutline(size, layoutDirection, this)
+                    drawOutline(outline, Color.Black.copy(alpha = 0.78f), style = Stroke(4.2.dp.toPx()))
+                    drawOutline(outline, Color.White, style = Stroke(2.6.dp.toPx()))
+                }
+            }
     ) {
         Thumbnail(
             url = short.shortThumbnail,
@@ -445,11 +504,22 @@ private fun ChannelShortCard(short: VideoItem, onClick: () -> Unit) {
 private fun ChannelCollectionCard(col: PublicCollection, onClick: () -> Unit) {
     val c = MaterialTheme.colorScheme
     val menu = LocalCollectionMenu.current
-    val cardShape = RoundedCornerShape(16.dp)
+    val isTv = LocalIsTv.current
+    var focused by remember { mutableStateOf(false) }
+    val cardShape = RoundedCornerShape(if (isTv) 12.dp else 16.dp)
+    val thumbShape = RoundedCornerShape(if (isTv) 12.dp else 16.dp)
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .pressable(pressedScale = 0.98f, focusScale = 1.03f, focusShape = cardShape, onLongClick = { menu(col) }, onClick = onClick)
+            .onFocusChanged { focused = it.hasFocus || it.isFocused }
+            .pressable(
+                pressedScale = 0.98f,
+                focusScale = 1.03f,
+                focusShape = cardShape,
+                showFocusBorder = !isTv,
+                onLongClick = { menu(col) },
+                onClick = onClick,
+            )
             .clip(cardShape)
             .padding(4.dp)
     ) {
@@ -457,15 +527,23 @@ private fun ChannelCollectionCard(col: PublicCollection, onClick: () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
-                .clip(RoundedCornerShape(16.dp))
+                .clip(thumbShape)
+                .drawWithContent {
+                    drawContent()
+                    if (isTv && focused) {
+                        val outline = thumbShape.createOutline(size, layoutDirection, this)
+                        drawOutline(outline, Color.Black.copy(alpha = 0.78f), style = Stroke(4.2.dp.toPx()))
+                        drawOutline(outline, Color.White, style = Stroke(2.6.dp.toPx()))
+                    }
+                }
         ) {
             Thumbnail(col.thumbnail, Modifier.fillMaxSize(), radius = 0)
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(8.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color.Black.copy(alpha = 0.75f))
+                    .clip(RoundedCornerShape(if (isTv) 4.dp else 8.dp))
+                    .background(Color.Black.copy(alpha = 0.78f))
                     .padding(horizontal = 7.dp, vertical = 3.dp)
             ) {
                 Text(
@@ -483,7 +561,7 @@ private fun ChannelCollectionCard(col: PublicCollection, onClick: () -> Unit) {
             fontSize = 14.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            color = c.onSurface,
+            color = if (isTv && focused) Color.White else c.onSurface,
         )
         Text(
             text = col.subtitle,

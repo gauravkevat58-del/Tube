@@ -32,18 +32,24 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.aspectRatio
 import com.github.itube.ui.components.HomeScreenSkeleton
 import com.github.itube.ui.components.MaterialLoader
 import com.github.itube.ui.tv.LocalIsTv
@@ -255,67 +261,156 @@ private fun MusicCollectionsShelf(
     onPlay: (PublicCollection) -> Unit,
 ) {
     val c = MaterialTheme.colorScheme
+    val isTv = LocalIsTv.current
     Column(Modifier.padding(top = 4.dp, bottom = 10.dp)) {
         SectionTitle("Mixes & music playlists")
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(if (isTv) 14.dp else 12.dp),
         ) {
             itemsIndexed(collections, key = { _, collection -> "music-collection-${collection.url}" }) { idx, collection ->
                 val isMix = collection.subtitle.contains("mix", ignoreCase = true) ||
                     collection.url.substringAfter("list=", "").startsWith("RD")
-                val cardShape = RoundedCornerShape(18.dp)
-                Column(
-                    Modifier
-                        .then(if (idx < 3) Modifier.tvContentEntry("tab:Music", priority = entryPriorityOffset + idx) else Modifier)
-                        .width(204.dp)
-                        .pressable(pressedScale = 0.98f, focusScale = 1.03f, focusShape = cardShape) { onPlay(collection) },
-                ) {
-                    Box(
+                if (isTv) {
+                    var focused by remember { mutableStateOf(false) }
+                    val thumbShape = RoundedCornerShape(12.dp)
+                    Column(
                         Modifier
-                            .fillMaxWidth()
-                            .height(122.dp)
-                            .clip(cardShape)
-                            .border(0.75.dp, c.outlineVariant.copy(alpha = 0.3f), cardShape),
+                            .then(if (idx < 3) Modifier.tvContentEntry("tab:Music", priority = entryPriorityOffset + idx) else Modifier)
+                            .width(244.dp)
+                            .onFocusChanged { focused = it.hasFocus || it.isFocused }
+                            .pressable(
+                                pressedScale = 0.98f,
+                                focusScale = 1.03f,
+                                showFocusBorder = false,
+                            ) { onPlay(collection) },
                     ) {
-                        Thumbnail(collection.thumbnail, Modifier.fillMaxSize(), radius = 0)
                         Box(
-                            Modifier.fillMaxSize().background(
-                                Brush.verticalGradient(0.25f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.78f)),
-                            ),
+                            Modifier
+                                .align(Alignment.CenterHorizontally)
+                                .fillMaxWidth(0.88f)
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
+                                .background(if (focused) Color.White.copy(alpha = 0.72f) else Color(0xFF3A3A3A)),
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(16f / 9f)
+                                .clip(thumbShape)
+                                .drawWithContent {
+                                    drawContent()
+                                    if (focused) {
+                                        val outline = thumbShape.createOutline(size, layoutDirection, this)
+                                        drawOutline(outline, Color.Black.copy(alpha = 0.78f), style = Stroke(4.2.dp.toPx()))
+                                        drawOutline(outline, Color.White, style = Stroke(2.6.dp.toPx()))
+                                    }
+                                },
+                        ) {
+                            Thumbnail(collection.thumbnail, Modifier.fillMaxSize(), radius = 0)
+                            Box(
+                                Modifier.fillMaxSize().background(
+                                    Brush.verticalGradient(0.3f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.78f)),
+                                ),
+                            )
+                            Text(
+                                if (isMix) "MIX" else "PLAYLIST",
+                                Modifier.align(Alignment.TopStart).padding(8.dp).clip(RoundedCornerShape(4.dp))
+                                    .background(Color.Black.copy(alpha = 0.78f)).padding(horizontal = 7.dp, vertical = 3.dp),
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.5.sp,
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(8.dp)
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(if (focused) Color.White else Color.Black.copy(alpha = 0.72f)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    Icons.Rounded.PlayArrow,
+                                    "Play ${collection.title}",
+                                    tint = if (focused) Color(0xFF0F0F0F) else Color.White,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        }
+                        Text(
+                            collection.title,
+                            Modifier.padding(top = 8.dp),
+                            color = if (focused) Color.White else c.onSurface,
+                            fontSize = 14.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            if (isMix) "MIX" else "PLAYLIST",
-                            Modifier.align(Alignment.TopStart).padding(9.dp).clip(CircleShape)
-                                .background(Color.Black.copy(alpha = 0.6f)).padding(horizontal = 9.dp, vertical = 4.dp),
-                            color = Color.White,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                        )
-                        Icon(
-                            Icons.Rounded.PlayArrow,
-                            "Play ${collection.title}",
-                            tint = Color.White,
-                            modifier = Modifier.align(Alignment.BottomEnd).padding(9.dp).size(30.dp)
-                                .clip(CircleShape).background(c.primary).padding(5.dp),
+                            if (isMix) "Play mix · all tracks" else "Play playlist · all videos",
+                            color = c.onSurfaceVariant,
+                            fontSize = 12.5.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    Text(
-                        collection.title,
-                        Modifier.padding(top = 7.dp),
-                        color = c.onSurface,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        if (isMix) "Play mix · all tracks" else "Play playlist · all videos",
-                        color = c.onSurfaceVariant,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                } else {
+                    val cardShape = RoundedCornerShape(18.dp)
+                    Column(
+                        Modifier
+                            .then(if (idx < 3) Modifier.tvContentEntry("tab:Music", priority = entryPriorityOffset + idx) else Modifier)
+                            .width(204.dp)
+                            .pressable(pressedScale = 0.98f, focusScale = 1.03f, focusShape = cardShape) { onPlay(collection) },
+                    ) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(122.dp)
+                                .clip(cardShape)
+                                .border(0.75.dp, c.outlineVariant.copy(alpha = 0.3f), cardShape),
+                        ) {
+                            Thumbnail(collection.thumbnail, Modifier.fillMaxSize(), radius = 0)
+                            Box(
+                                Modifier.fillMaxSize().background(
+                                    Brush.verticalGradient(0.25f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.78f)),
+                                ),
+                            )
+                            Text(
+                                if (isMix) "MIX" else "PLAYLIST",
+                                Modifier.align(Alignment.TopStart).padding(9.dp).clip(CircleShape)
+                                    .background(Color.Black.copy(alpha = 0.6f)).padding(horizontal = 9.dp, vertical = 4.dp),
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                            )
+                            Icon(
+                                Icons.Rounded.PlayArrow,
+                                "Play ${collection.title}",
+                                tint = Color.White,
+                                modifier = Modifier.align(Alignment.BottomEnd).padding(9.dp).size(30.dp)
+                                    .clip(CircleShape).background(c.primary).padding(5.dp),
+                            )
+                        }
+                        Text(
+                            collection.title,
+                            Modifier.padding(top = 7.dp),
+                            color = c.onSurface,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            if (isMix) "Play mix · all tracks" else "Play playlist · all videos",
+                            color = c.onSurfaceVariant,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
         }

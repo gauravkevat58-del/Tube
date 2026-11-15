@@ -1,18 +1,10 @@
 package com.github.itube.ui.tv
 
 import android.view.HapticFeedbackConstants
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandHorizontally
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -32,14 +24,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccountCircle
-import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -48,24 +38,33 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.itube.Account
+import com.github.itube.ChannelAvatar
+import com.github.itube.ShortsSetting
 import com.github.itube.Tab
 
-val TvRailWidth = 76.dp
-val TvRailExpandedWidth = 204.dp
+val TvRailWidth = 72.dp
+val TvRailExpandedWidth = 228.dp
+
+private val RailBg = Color(0xFF0F0F0F).copy(alpha = 0.98f)
+private val RailActiveBg = Color.White.copy(alpha = 0.14f)
+private val RailFocusBg = Color.White
+private val RailFocusInk = Color(0xFF0F0F0F)
+private val RailMutedInk = Color(0xFFAAAAAA)
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -75,13 +74,12 @@ fun TvNavRail(
     onAccount: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val c = MaterialTheme.colorScheme
     val bridge = LocalTvFocusBridge.current
     var railHasFocus by remember { mutableStateOf(false) }
 
     val railWidth by animateDpAsState(
         targetValue = if (railHasFocus) TvRailExpandedWidth else TvRailWidth,
-        animationSpec = spring(dampingRatio = 0.8f, stiffness = 900f),
+        animationSpec = spring(dampingRatio = 0.85f, stiffness = 900f),
         label = "tvRailWidth",
     )
 
@@ -89,7 +87,6 @@ fun TvNavRail(
         modifier = modifier
             .fillMaxHeight()
             .width(railWidth)
-            .shadow(if (railHasFocus) 24.dp else 8.dp)
             .onFocusChanged { railHasFocus = it.hasFocus }
             .focusProperties {
                 exit = { direction ->
@@ -101,136 +98,203 @@ fun TvNavRail(
                 }
             }
             .focusGroup(),
-        color = c.surfaceContainerLow.copy(alpha = 0.96f),
-        shape = RoundedCornerShape(topEnd = 24.dp, bottomEnd = 24.dp),
-        tonalElevation = 6.dp,
+        color = RailBg,
+        shape = RectangleShape,
+        tonalElevation = 0.dp,
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxHeight()
-                .statusBarsPadding()
-                .padding(vertical = 18.dp, horizontal = 10.dp),
-            horizontalAlignment = Alignment.Start,
-            verticalArrangement = Arrangement.SpaceBetween,
-        ) {
-            // Header / Brand Mark
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = if (railHasFocus) Alignment.Start else Alignment.CenterHorizontally,
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFFE50914)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.PlayArrow,
-                            contentDescription = "iTube TV",
-                            tint = Color.White,
-                            modifier = Modifier.size(24.dp),
-                        )
-                    }
-                    if (railHasFocus) {
-                        Spacer(Modifier.width(12.dp))
-                        Text(
-                            text = "iTube TV",
-                            color = c.onSurface,
-                            fontSize = 19.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            maxLines = 1,
-                        )
-                    }
-                }
-            }
-
-            // Navigation Tabs
+        Box(modifier = Modifier.fillMaxHeight()) {
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                horizontalAlignment = if (railHasFocus) Alignment.Start else Alignment.CenterHorizontally,
+                    .fillMaxHeight()
+                    .statusBarsPadding()
+                    .padding(vertical = 22.dp, horizontal = 10.dp),
+                horizontalAlignment = Alignment.Start,
+                verticalArrangement = Arrangement.SpaceBetween,
             ) {
-                val tabs = listOf(
-                    Tab.Home,
-                    Tab.Music,
-                    Tab.Subscriptions,
-                    Tab.Shorts,
-                    Tab.Search,
-                    Tab.Library,
+                // Top Profile / Account switcher (YouTube TV style)
+                TvProfileRailItem(
+                    expanded = railHasFocus,
+                    onClick = onAccount,
                 )
 
-                tabs.forEach { tab ->
-                    val selected = tab == selectedTab
-                    TvNavRailItem(
-                        tab = tab,
-                        isSelected = selected,
-                        expanded = railHasFocus,
-                        modifier = if (selected && bridge != null) Modifier.focusRequester(bridge.railRequester) else Modifier,
-                        onClick = { onSelectTab(tab) },
-                    )
-                }
-            }
-
-            // Account & Settings Button at Bottom
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = if (railHasFocus) Alignment.Start else Alignment.CenterHorizontally,
-            ) {
-                val interaction = remember { MutableInteractionSource() }
-                var isFocused by remember { mutableStateOf(false) }
-                val view = LocalView.current
-
-                Row(
+                // Middle Navigation Tabs (YouTube TV order)
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(48.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(
-                            if (isFocused) c.primary.copy(alpha = 0.24f)
-                            else Color.Transparent
-                        )
-                        .then(
-                            if (isFocused) Modifier.border(2.5.dp, c.primary, RoundedCornerShape(14.dp))
-                            else Modifier
-                        )
-                        .onFocusChanged { isFocused = it.hasFocus || it.isFocused }
-                        .clickable(
-                            interactionSource = interaction,
-                            indication = null,
-                            role = Role.Button,
-                        ) {
-                            view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
-                            onAccount()
-                        }
-                        .padding(horizontal = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = if (railHasFocus) Arrangement.Start else Arrangement.Center,
+                        .padding(vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    horizontalAlignment = Alignment.Start,
                 ) {
-                    Icon(
-                        imageVector = if (Account.signedIn) Icons.Rounded.AccountCircle else Icons.Rounded.Settings,
-                        contentDescription = "Settings and Account",
-                        tint = if (isFocused) c.primary else c.onSurfaceVariant,
-                        modifier = Modifier.size(24.dp),
-                    )
-                    if (railHasFocus) {
-                        Spacer(Modifier.width(14.dp))
-                        Text(
-                            text = if (Account.signedIn) "Account" else "Settings",
-                            color = if (isFocused) c.primary else c.onSurface,
-                            fontSize = 14.sp,
-                            fontWeight = if (isFocused) FontWeight.Bold else FontWeight.SemiBold,
-                            maxLines = 1,
+                    val tabs = buildList {
+                        add(Tab.Search)
+                        add(Tab.Home)
+                        if (ShortsSetting.enabled) add(Tab.Shorts)
+                        add(Tab.Subscriptions)
+                        add(Tab.Music)
+                        add(Tab.Library)
+                    }
+
+                    tabs.forEach { tab ->
+                        val selected = tab == selectedTab
+                        TvNavRailItem(
+                            tab = tab,
+                            isSelected = selected,
+                            expanded = railHasFocus,
+                            modifier = if (selected && bridge != null) Modifier.focusRequester(bridge.railRequester) else Modifier,
+                            onClick = { onSelectTab(tab) },
                         )
                     }
                 }
+
+                // Bottom Settings row (YouTube TV style)
+                TvSettingsRailItem(
+                    expanded = railHasFocus,
+                    onClick = onAccount,
+                )
             }
+
+            // Subtle cinema hairline separating sidebar from browse canvas
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .fillMaxHeight()
+                    .width(1.dp)
+                    .background(Color.White.copy(alpha = 0.08f)),
+            )
+        }
+    }
+}
+
+@Composable
+private fun TvProfileRailItem(
+    expanded: Boolean,
+    onClick: () -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    var isFocused by remember { mutableStateOf(false) }
+    val view = LocalView.current
+    val scale by animateFloatAsState(
+        targetValue = if (isFocused) 1.03f else 1f,
+        animationSpec = spring(dampingRatio = 0.72f, stiffness = 1350f),
+        label = "tvProfileScale",
+    )
+    val profile = Account.profile
+    val signedIn = profile != null
+    val accountName = profile?.name?.takeIf { it.isNotBlank() } ?: if (signedIn) "Account" else "Sign in"
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(50.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(CircleShape)
+            .background(if (isFocused) RailFocusBg else Color.Transparent)
+            .onFocusChanged { isFocused = it.hasFocus || it.isFocused }
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                role = Role.Button,
+            ) {
+                view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                onClick()
+            }
+            .padding(horizontal = if (expanded) 10.dp else 0.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = if (expanded) Arrangement.Start else Arrangement.Center,
+    ) {
+        if (profile != null && !profile.avatar.isNullOrBlank()) {
+            ChannelAvatar(
+                url = profile.avatar,
+                name = accountName,
+                size = 30,
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Rounded.AccountCircle,
+                contentDescription = accountName,
+                tint = if (isFocused) RailFocusInk else Color(0xFFF1F1F1),
+                modifier = Modifier.size(28.dp),
+            )
+        }
+        if (expanded) {
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = accountName,
+                    color = if (isFocused) RailFocusInk else Color(0xFFF1F1F1),
+                    fontSize = 14.sp,
+                    fontWeight = if (isFocused) FontWeight.Bold else FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = if (signedIn) "Switch account" else "Sign in for feeds",
+                    color = if (isFocused) RailFocusInk.copy(alpha = 0.72f) else RailMutedInk,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TvSettingsRailItem(
+    expanded: Boolean,
+    onClick: () -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    var isFocused by remember { mutableStateOf(false) }
+    val view = LocalView.current
+    val scale by animateFloatAsState(
+        targetValue = if (isFocused) 1.03f else 1f,
+        animationSpec = spring(dampingRatio = 0.72f, stiffness = 1350f),
+        label = "tvSettingsScale",
+    )
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(CircleShape)
+            .background(if (isFocused) RailFocusBg else Color.Transparent)
+            .onFocusChanged { isFocused = it.hasFocus || it.isFocused }
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                role = Role.Button,
+            ) {
+                view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                onClick()
+            }
+            .padding(horizontal = if (expanded) 14.dp else 0.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = if (expanded) Arrangement.Start else Arrangement.Center,
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.Settings,
+            contentDescription = "Settings",
+            tint = if (isFocused) RailFocusInk else RailMutedInk,
+            modifier = Modifier.size(23.dp),
+        )
+        if (expanded) {
+            Spacer(Modifier.width(16.dp))
+            Text(
+                text = "Settings",
+                color = if (isFocused) RailFocusInk else Color(0xFFF1F1F1),
+                fontSize = 15.sp,
+                fontWeight = if (isFocused) FontWeight.Bold else FontWeight.Medium,
+                maxLines = 1,
+            )
         }
     }
 }
@@ -243,44 +307,40 @@ private fun TvNavRailItem(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
-    val c = MaterialTheme.colorScheme
     val interaction = remember { MutableInteractionSource() }
     var isFocused by remember { mutableStateOf(false) }
     val view = LocalView.current
 
     val scale by animateFloatAsState(
-        targetValue = if (isFocused) 1.06f else 1f,
-        animationSpec = spring(dampingRatio = 0.68f, stiffness = 1350f),
+        targetValue = if (isFocused) 1.03f else 1f,
+        animationSpec = spring(dampingRatio = 0.72f, stiffness = 1350f),
         label = "tvRailItemScale",
     )
 
     val itemBgColor = when {
-        isFocused -> c.primary
-        isSelected -> c.primaryContainer
+        isFocused -> RailFocusBg
+        isSelected -> RailActiveBg
         else -> Color.Transparent
     }
 
     val itemContentColor = when {
-        isFocused -> c.onPrimary
-        isSelected -> c.onPrimaryContainer
-        else -> c.onSurfaceVariant
+        isFocused -> RailFocusInk
+        isSelected -> Color.White
+        else -> RailMutedInk
     }
+
+    val displayLabel = if (tab == Tab.Subscriptions) "Subscriptions" else tab.label
 
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(50.dp)
+            .height(48.dp)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
             }
-            .clip(RoundedCornerShape(16.dp))
+            .clip(CircleShape)
             .background(itemBgColor)
-            .then(
-                if (isFocused) {
-                    Modifier.border(2.5.dp, Color.White, RoundedCornerShape(16.dp))
-                } else Modifier
-            )
             .onFocusChanged { isFocused = it.hasFocus || it.isFocused }
             .clickable(
                 interactionSource = interaction,
@@ -290,24 +350,29 @@ private fun TvNavRailItem(
                 view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
                 onClick()
             }
-            .padding(horizontal = 12.dp),
+            .padding(horizontal = if (expanded) 14.dp else 0.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = if (expanded) Arrangement.Start else Arrangement.Center,
     ) {
         Icon(
             imageVector = if (isSelected || isFocused) tab.selectedIcon else tab.icon,
-            contentDescription = tab.label,
+            contentDescription = displayLabel,
             tint = itemContentColor,
-            modifier = Modifier.size(24.dp),
+            modifier = Modifier.size(23.dp),
         )
         if (expanded) {
-            Spacer(Modifier.width(14.dp))
+            Spacer(Modifier.width(16.dp))
             Text(
-                text = tab.label,
+                text = displayLabel,
                 color = itemContentColor,
-                fontSize = 14.sp,
-                fontWeight = if (isSelected || isFocused) FontWeight.Bold else FontWeight.SemiBold,
+                fontSize = 15.sp,
+                fontWeight = when {
+                    isFocused -> FontWeight.Bold
+                    isSelected -> FontWeight.SemiBold
+                    else -> FontWeight.Medium
+                },
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }

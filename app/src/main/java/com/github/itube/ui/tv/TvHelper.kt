@@ -252,7 +252,8 @@ fun Modifier.tvFocusRing(
         label = "tvFocusScale",
     )
     val c = MaterialTheme.colorScheme
-    val strokeColor = borderColor ?: c.primary
+    val isTv = LocalIsTv.current
+    val strokeColor = borderColor ?: if (isTv) Color.White else c.primary
     val outerHalo = if (strokeColor.luminance() > 0.45f) Color.Black.copy(alpha = 0.72f) else Color.White.copy(alpha = 0.88f)
 
     this
